@@ -5,6 +5,7 @@ import { request as httpRequest } from 'node:http';
 import { startGateway } from '../src/gateway.js';
 import { config, request, stream } from './helpers.js';
 import { parseSSE } from '../src/protocol.js';
+import { CLAUDE_SLOTS } from '../src/slots.js';
 
 async function setup(t: test.TestContext, protocol: 'chat' | 'anthropic', upstream: typeof fetch) {
   const cfg = config(protocol);
@@ -28,7 +29,7 @@ test('loopback authentication, Host/Origin checks and endpoint/method validation
   });
   assert.equal(badHostStatus, 403);
   assert.equal((await post(request({ model: 'unknown' }))).status, 400);
-  assert.equal((await post(request({ max_tokens: 4097 }))).status, 400);
+  assert.equal((await post(request({ max_tokens: 0 }))).status, 400);
   assert.equal((await post(request({ messages: [{ role: 'system', content: 'bad' }] }))).status, 400);
   assert.equal((await fetch(`${gateway.url}/v1/messages`, { headers: { 'x-api-key': cfg.token } })).status, 405);
   const count = await fetch(`${gateway.url}/v1/messages/count_tokens`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': cfg.token }, body: JSON.stringify(request()) });
@@ -72,14 +73,78 @@ test('native Anthropic preserves cache/opaque fields, replaces models and strips
     const headers = new Headers(init?.headers); assert.equal(headers.get('x-api-key'), 'UPSTREAM_KEY'); assert.equal(headers.get('authorization'), null);
     const body = JSON.parse(init?.body as string);
     assert.equal(body.model, 'actual-model'); assert.equal(body.system[0].cache_control.type, 'ephemeral'); assert.equal(body.metadata.user_id, 'fixture-session');
+    assert.deepEqual(body.output_config, { effort: 'high' }); assert.deepEqual(body.thinking, { type: 'adaptive' });
     const message = { id: 'msg_native', type: 'message', role: 'assistant', model: 'actual-model', content: [{ type: 'text', text: 'Native' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 2 } };
     if (!body.stream) return Response.json(message);
     return stream([{ event: 'message_start', data: { type: 'message_start', message: { ...message, content: [], stop_reason: null } } }, { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } }, { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Native' } } }, { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } }, { event: 'message_delta', data: { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } } }, { event: 'message_stop', data: { type: 'message_stop' } }]);
   });
-  const extra = { system: [{ type: 'text' as const, text: 'system', cache_control: { type: 'ephemeral' as const } }], metadata: { user_id: 'fixture-session' } };
+  const extra = { system: [{ type: 'text' as const, text: 'system', cache_control: { type: 'ephemeral' as const } }], metadata: { user_id: 'fixture-session' }, thinking: { type: 'adaptive' }, output_config: { effort: 'high' } };
   assert.equal((await (await post(request(extra))).json() as any).model, 'claude-sonnet-5');
   const message = await client.messages.stream({ ...request(), ...extra } as any).finalMessage();
   assert.equal(message.model, 'claude-sonnet-5'); assert.equal((message.content[0] as any).text, 'Native');
+});
+test('Anthropic beta SDK queries and model retrieval work through the same gateway', async t => {
+  let calls = 0;
+  const { client } = await setup(t, 'anthropic', async () => {
+    calls++;
+    return Response.json({ id: 'msg_beta', type: 'message', role: 'assistant', model: 'actual-model', content: [{ type: 'text', text: 'Beta verified' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 2, output_tokens: 2 } });
+  });
+  const message = await client.beta.messages.create(request() as any);
+  assert.equal(message.model, 'claude-sonnet-5');
+  assert.equal((message.content[0] as any).text, 'Beta verified');
+  const count = await client.beta.messages.countTokens({ model: 'claude-sonnet-5', messages: [{ role: 'user', content: 'Hello' }] });
+  assert.ok(count.input_tokens > 0);
+  const listed = await client.models.list({ limit: 10 });
+  assert.equal(listed.data[0].id, 'claude-sonnet-5');
+  const model = await client.models.retrieve('claude-sonnet-5');
+  assert.equal(model.display_name, 'Test Model');
+  await assert.rejects(client.models.retrieve('unknown-model'), (error: any) => error.status === 404);
+  assert.equal(calls, 1);
+});
+test('Desktop-sized output requests are capped to the backend budget with compatible thinking limits', async t => {
+  let calls = 0;
+  const { post } = await setup(t, 'anthropic', async (_url, init) => {
+    const body = JSON.parse(init?.body as string); calls++;
+    assert.equal(body.max_tokens, 4096);
+    assert.deepEqual(body.thinking, { type: 'enabled', budget_tokens: 4095 });
+    return Response.json({ id: 'msg_cap', type: 'message', role: 'assistant', model: 'actual-model', content: [{ type: 'text', text: 'Capped' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 2, output_tokens: 1 } });
+  });
+  const response = await post(request({ max_tokens: 32000, thinking: { type: 'enabled', budget_tokens: 16000 } }));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-bridge-max-tokens'), '4096');
+  assert.equal(calls, 1);
+  assert.equal((await post(request({ max_tokens: -1 }))).status, 400);
+  assert.equal((await post(request({ max_tokens: 1.5 }))).status, 400);
+  assert.equal(calls, 1);
+});
+test('each Claude family alias dispatches to its own backend and advertises its actual name', async t => {
+  const cfg = config('anthropic');
+  cfg.routes = CLAUDE_SLOTS.map(slot => ({ ...cfg.routes[0], tier: slot.tier, slot: slot.key, id: slot.id, ref: `provider/backend-${slot.key}`, model: `backend-${slot.key}`, label: `Backend ${slot.key} · provider` }));
+  const upstreamModels: string[] = [];
+  const gateway = await startGateway(cfg, { port: 0, credential: async () => undefined, fetch: async (_url, init) => {
+    const body = JSON.parse(init?.body as string); upstreamModels.push(body.model);
+    return Response.json({ id: 'msg_route', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: body.model }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } });
+  } });
+  t.after(() => gateway.close());
+  const client = new Anthropic({ baseURL: gateway.url, apiKey: cfg.token, maxRetries: 0 });
+  const models = await client.models.list();
+  assert.deepEqual(models.data.map(model => ({ id: model.id, label: model.display_name })), cfg.routes.map(route => ({ id: route.id, label: route.label })));
+  for (const route of cfg.routes) {
+    const result = await client.messages.create(request({ model: route.id }) as any);
+    assert.equal(result.model, route.id);
+    assert.equal((result.content[0] as any).text, route.model);
+  }
+  assert.deepEqual(upstreamModels, CLAUDE_SLOTS.map(slot => `backend-${slot.key}`));
+});
+test('Desktop inline system messages are preserved in the Anthropic system field', async t => {
+  const { post } = await setup(t, 'anthropic', async (_url, init) => {
+    const body = JSON.parse(init?.body as string);
+    assert.deepEqual(body.system, [{ type: 'text', text: 'Base instructions' }, { type: 'text', text: 'Desktop context' }, { type: 'text', text: 'Session notice', cache_control: { type: 'ephemeral' } }]);
+    assert.deepEqual(body.messages, [{ role: 'user', content: 'Verify' }, { role: 'assistant', content: 'Ready' }, { role: 'user', content: 'Continue' }]);
+    return Response.json({ id: 'msg_system', type: 'message', role: 'assistant', model: 'actual-model', content: [{ type: 'text', text: 'Verified' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } });
+  });
+  const response = await post(request({ system: 'Base instructions', messages: [{ role: 'user', content: 'Verify' }, { role: 'system', content: 'Desktop context' }, { role: 'assistant', content: 'Ready' }, { role: 'user', content: 'Continue' }, { role: 'system', content: [{ type: 'text', text: 'Session notice', cache_control: { type: 'ephemeral' } }] }] }));
+  assert.equal(response.status, 200);
 });
 test('non-streaming tools and provider reasoning replay stay out of synthetic thinking blocks', async t => {
   const cfg = config(); cfg.routes[0].reasoningField = 'reasoning_content';

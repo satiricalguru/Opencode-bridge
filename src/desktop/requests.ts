@@ -2,9 +2,10 @@ import { isObject } from '../types.js';
 import type { DesktopRequest, Selection } from './contracts.js';
 
 function selection(value: unknown): Selection {
-  if (!isObject(value) || Object.keys(value).some(k => !['model', 'opus', 'haiku'].includes(k)) || typeof value.model !== 'string' || !value.model || value.model.length > 512) throw new Error('Invalid model selection.');
-  for (const key of ['opus', 'haiku']) if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 512)) throw new Error('Invalid auxiliary model selection.');
-  return { model: value.model, ...(value.opus ? { opus: value.opus } : {}), ...(value.haiku ? { haiku: value.haiku } : {}) };
+  if (!isObject(value) || Object.keys(value).some(k => !['model', 'opus', 'haiku', 'fable', 'sonnet46', 'autoMode'].includes(k)) || typeof value.model !== 'string' || !value.model || value.model.length > 512) throw new Error('Invalid model selection.');
+  for (const key of ['opus', 'haiku', 'fable', 'sonnet46']) if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 512)) throw new Error('Invalid auxiliary model selection.');
+  if (value.autoMode !== undefined && typeof value.autoMode !== 'boolean') throw new Error('Auto mode preference must be boolean.');
+  return { model: value.model, ...Object.fromEntries(['opus', 'haiku', 'fable', 'sonnet46'].filter(key => value[key]).map(key => [key, value[key]])), ...(value.autoMode !== undefined ? { autoMode: value.autoMode } : {}) };
 }
 export function parseDesktopRequest(value: unknown): DesktopRequest {
   if (!isObject(value) || typeof value.action !== 'string') throw new Error('Invalid app request.');
@@ -12,12 +13,13 @@ export function parseDesktopRequest(value: unknown): DesktopRequest {
     if (Object.keys(value).length !== 1) throw new Error('Unexpected app request fields.');
     return { action: value.action } as DesktopRequest;
   }
-  if (!['save', 'launch', 'disconnect'].includes(value.action) || typeof value.client !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value.client)) throw new Error('Invalid client action.');
-  const allowed = value.action === 'disconnect' ? ['action', 'client', 'restart'] : ['action', 'client', 'selection', 'port', ...(value.action === 'launch' ? ['restart'] : [])];
+  if (!['save', 'launch', 'apply', 'disconnect', 'disconnect-quit'].includes(value.action) || typeof value.client !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value.client)) throw new Error('Invalid client action.');
+  const disconnecting = value.action === 'disconnect' || value.action === 'disconnect-quit';
+  const allowed = disconnecting ? ['action', 'client', 'restart'] : ['action', 'client', 'selection', 'port', ...(value.action !== 'save' ? ['restart'] : [])];
   if (Object.keys(value).some(k => !allowed.includes(k))) throw new Error('Unexpected app request fields.');
   if (value.action !== 'save' && typeof value.restart !== 'boolean') throw new Error('Restart preference must be explicit.');
-  if (value.action === 'disconnect') return { action: 'disconnect', client: value.client, restart: value.restart };
+  if (disconnecting) return { action: value.action, client: value.client, restart: value.restart } as DesktopRequest;
   if (!Number.isInteger(value.port) || value.port < 1024 || value.port > 65535) throw new Error('Choose a port between 1024 and 65535.');
   const picked = selection(value.selection);
-  return value.action === 'save' ? { action: 'save', client: value.client, selection: picked, port: value.port } : { action: 'launch', client: value.client, selection: picked, port: value.port, restart: value.restart };
+  return value.action === 'save' ? { action: 'save', client: value.client, selection: picked, port: value.port } : { action: value.action, client: value.client, selection: picked, port: value.port, restart: value.restart } as DesktopRequest;
 }

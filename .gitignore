@@ -3,6 +3,7 @@ dist/
 renderer-dist/
 release/
 release-final/
+release-verified/
 .bridge/
 .env
 *.log

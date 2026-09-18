@@ -23,7 +23,7 @@ export async function discoverLocalModels(fetcher: typeof fetch = fetch): Promis
         // Ollama already implements Messages and thinking streams; use its adapter.
         api: { id: tag.name, url: `${baseURL}/v1`, npm: '@ai-sdk/anthropic' },
         limit: { context: typeof context === 'number' ? Math.min(context, 32768) : 32768, output: 4096 },
-        capabilities: { toolcall: info.capabilities?.includes('tools') === true, input: { image: info.capabilities?.includes('vision') === true } },
+        capabilities: { toolcall: info.capabilities?.includes('tools') === true, reasoning: info.capabilities?.includes('thinking') === true, input: { image: info.capabilities?.includes('vision') === true } },
         cost: { input: 0, output: 0 },
       });
     } catch { /* A temporarily unavailable model is omitted rather than advertised as ready. */ }

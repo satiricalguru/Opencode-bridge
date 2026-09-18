@@ -40,6 +40,8 @@
 
 ## 🌟 Overview
 
+**Verification status (18 September 2026):** Applications → Claude now provides independent Fable 5, Opus 5, Sonnet 5, Haiku 4.5, and Sonnet 4.6 selectors, an Apply & Restart button, and an Auto mode setting (off by default). The installed app applied the five-slot profile and Claude displayed all five entries, preserving the selected backend and effort. Full Quit now offers Disconnect & Quit, Keep Connected & Quit, or Cancel; closing the window hides Bridge in the menu bar. Actual local Desktop chat previously completed on retry, though cold latency remains a limitation. The main goal of OpenCode Zen free models remains blocked by HTTP 403, including Big Pickle through the genuine OpenCode CLI. See [VERIFICATION.md](VERIFICATION.md) for exact checks and limits. The local application build is unsigned and not notarized.
+
 **OpenCode Bridge** empowers developers to unlock the full potential of **Claude Desktop** by routing inference requests through a resilient local gateway. Connect any model from your configured **OpenCode connections** or your locally running **Ollama** server, and interact using Claude Desktop's signature interface, keyboard shortcuts, and client tools.
 
 Claude Desktop sends standard Anthropic Messages API requests directly to the bridge at `127.0.0.1`. The bridge intelligently determines how to fulfill each request:
@@ -123,7 +125,7 @@ The packaged Electron companion provides an intuitive, high-craft macOS experien
 
 ### App Features:
 1. **Search & Filter:** Instant search through all configured OpenCode models and detected local Ollama models.
-2. **Ready to Connect Filter:** Instantly highlights compatible models with active API keys or verified local endpoints.
+2. **Ready to Connect Filter:** Highlights protocol-compatible models with available API-key credentials or discovered local endpoints. This does not certify inference access.
 3. **Model Tier Overrides:** Independently map Opus and Haiku tiers to secondary models (e.g. route Haiku to a lightning-fast local model).
 4. **One-Click Launch:** Automatically writes the bridge profile, starts the gateway daemon, and launches Claude Desktop.
 5. **Instant Restoration:** Click **Restore previous connection** to cleanly remove bridge configuration, revert Claude Desktop settings, and shut down the gateway.
@@ -234,13 +236,13 @@ ollama list
 ```
 
 ### Step 2: OpenCode Configuration
-Add the local model definition to your OpenCode configuration (e.g. `~/.config/opencode/config.json`):
+The desktop app discovers installed Ollama models automatically. For CLI use, add a local model definition to your OpenCode configuration (e.g. `~/.config/opencode/opencode.json`):
 
 ```json
 {
   "provider": {
     "ollama-local": {
-      "npm": "@ai-sdk/openai-compatible",
+      "npm": "@ai-sdk/anthropic",
       "name": "Ollama Local",
       "options": {
         "baseURL": "http://127.0.0.1:11434/v1"
@@ -352,8 +354,8 @@ npm run smoke -- PROVIDER/MODEL
 <details>
 <summary><strong>1. HTTP 403 FreeTierError on OpenCode Zen Models</strong></summary>
 
-Certain OpenCode free models (e.g. `opencode/union-alpha` or `opencode/big-pickle`) enforce an internal user-agent restriction. When routing external desktop clients through the bridge, OpenCode will reject requests with `FreeTierError`.
-**Fix:** Switch to your own API key connection or a local Ollama model.
+The five currently supported Zen free endpoints tested returned HTTP 403 `FreeTierError`, restricting external use. Big Pickle also failed through the genuine latest OpenCode CLI v1.18.31; the bridge cannot resolve that provider response. This is not evidence that changing a user-agent header is a supported fix.
+**Current alternatives:** An accessible provider API-key route or an installed local model. These alternatives do not fulfill the Zen free-model goal; see [verification results](VERIFICATION.md) and [OpenCode's matching issue](https://github.com/anomalyco/opencode/issues/49431).
 </details>
 
 <details>

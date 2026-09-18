@@ -1,6 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { BridgeError, invalid, isObject, type Route, type Wire } from './types.js';
 
+// Desktop session history can contain inline system notices. Messages API
+// providers require these in the top-level system field, outside turn history.
+export function normalizeSystemMessages(body: Wire): Wire {
+  if (!Array.isArray(body.messages) || !body.messages.some(message => message?.role === 'system')) return body;
+  const blocks = (value: unknown): Wire[] => {
+    if (value === undefined) return [];
+    if (typeof value === 'string') return [{ type: 'text', text: value }];
+    if (!Array.isArray(value) || value.some(block => !isObject(block) || block.type !== 'text' || typeof block.text !== 'string')) invalid('System messages must contain text blocks.');
+    return value;
+  };
+  const system = [...blocks(body.system)];
+  const messages = body.messages.filter(message => {
+    if (message?.role !== 'system') return true;
+    system.push(...blocks(message.content)); return false;
+  });
+  return { ...body, system, messages };
+}
+
 export function validateRequest(body: unknown, route: Route): asserts body is Wire {
   if (!isObject(body) || !Array.isArray(body.messages) || !body.messages.length) invalid('messages must be a nonempty array.');
   if (!Number.isSafeInteger(body.max_tokens) || body.max_tokens < 1 || body.max_tokens > route.maxOutputTokens) invalid(`max_tokens must be between 1 and ${route.maxOutputTokens} for ${route.ref}.`);
@@ -78,7 +96,10 @@ function textBlocks(value: unknown): string {
   }).join('\n');
 }
 export function toChat(body: Wire, route: Route, replay: ReasoningReplay): Wire {
-  if (body.thinking && body.thinking.type !== 'disabled') invalid('Explicit Anthropic thinking is not supported on translated Chat routes yet. Disable thinking for this model.');
+  const effort = body.output_config?.effort;
+  const supportedEffort = route.effort?.mode === 'chat' && route.effort.levels.includes(effort);
+  if (effort !== undefined && !supportedEffort && effort !== 'low') invalid('This model does not advertise the requested effort level.');
+  if (body.thinking && body.thinking.type !== 'disabled' && !(body.thinking.type === 'adaptive' && supportedEffort)) invalid('Explicit Anthropic thinking is not supported on this translated Chat route. Use an advertised effort level or disable thinking.');
   const messages: Wire[] = [];
   if (body.system) messages.push({ role: 'system', content: textBlocks(body.system) });
   for (const message of body.messages) {
@@ -113,6 +134,7 @@ export function toChat(body: Wire, route: Route, replay: ReasoningReplay): Wire 
     }
   }
   const result: Wire = { model: route.model, messages, max_tokens: body.max_tokens, stream: !!body.stream };
+  if (supportedEffort) result.reasoning_effort = effort;
   for (const key of ['temperature', 'top_p']) if (body[key] !== undefined) result[key] = body[key];
   if (body.stop_sequences) result.stop = body.stop_sequences;
   if (body.stream) result.stream_options = { include_usage: true };

@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { activateProfile, isProfileActive, restoreProfile, PROFILE_ID, journalPath, previewProfile } from '../src/profile.js';
 import { atomicJSON, readJSON } from '../src/storage.js';
 import { config } from './helpers.js';
+import { CLAUDE_SLOTS } from '../src/slots.js';
+import { resolveRoute } from '../src/gateway.js';
 
 async function setup(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'bridge-profile-test-')); t.after(() => rm(root, { recursive: true, force: true }));
@@ -46,6 +48,28 @@ test('restore removes bridge-created files and preserves missing fields', async 
   const f = await setup(t);
   await activateProfile(config(), f.dir, f.support); await restoreProfile(f.dir);
   for (const path of [f.normal, f.third, f.meta, f.profile]) assert.equal(await readJSON(path), undefined);
+});
+test('Claude picker uses distinct family names and only advertises supported effort levels', async t => {
+  const f = await setup(t); const cfg = config('anthropic');
+  cfg.routes = ['sonnet', 'opus', 'haiku'].map((tier, index) => ({ ...cfg.routes[0], tier: tier as any, id: `alias-${tier}`, ...(index === 0 ? { effort: { mode: 'native', levels: ['low', 'medium', 'high'] } } : {}) })) as any;
+  await activateProfile(cfg, f.dir, f.support);
+  assert.deepEqual((await readJSON(f.profile))?.inferenceModels.map((m: any) => [m.labelOverride, m.maxEffort]), [['Claude Sonnet 5', 'high'], ['Claude Opus 5', 'low'], ['Claude Haiku 4.5', 'low']]);
+  await restoreProfile(f.dir);
+});
+test('five picker slots keep Sonnet 5 as the bare family default and restore the original connection after reapply', async t => {
+  const f = await setup(t); const cfg = config('anthropic');
+  await atomicJSON(f.normal, { deploymentMode: '1p', theme: 'original' });
+  cfg.routes = CLAUDE_SLOTS.map(slot => ({ ...cfg.routes[0], id: slot.id, tier: slot.tier, slot: slot.key, ref: `fixture/${slot.key}` }));
+  await activateProfile(cfg, f.dir, f.support);
+  let models = (await readJSON(f.profile))!.inferenceModels;
+  assert.equal(models.length, 5); assert.equal(models.find((model: any) => model.name === 'claude-sonnet-4-6').isFamilyDefault, false);
+  assert.equal(resolveRoute(cfg, 'sonnet').id, 'claude-sonnet-5'); assert.equal(resolveRoute(cfg, 'fable').ref, 'fixture/fable');
+  assert.equal(resolveRoute(cfg, 'claude-sonnet-4-6').ref, 'fixture/sonnet46');
+  await restoreProfile(f.dir);
+  await activateProfile({ ...cfg, autoMode: true }, f.dir, f.support);
+  assert.equal((await readJSON(f.profile))?.autoModeEnabled, true);
+  await restoreProfile(f.dir);
+  assert.deepEqual(await readJSON(f.normal), { deploymentMode: '1p', theme: 'original' });
 });
 test('restore detects an external connection change before modifying any file', async t => {
   const f = await setup(t);

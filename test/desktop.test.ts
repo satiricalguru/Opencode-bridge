@@ -21,16 +21,21 @@ async function setup(t: test.TestContext) {
   let connected = false;
   let installed = true;
   let running = false;
+  let active = 0;
   const client: DesktopClient = {
     descriptor: { id: 'claude', name: 'Claude Desktop', description: 'Test fixture', availability: 'available', protocol: 'anthropic-messages' },
     inspect: async () => ({ installed, running, connected, recoveryNeeded: false }), preview: async () => ({}),
     launch: async (config, restart) => { calls.push({ action: 'launch', config, restart }); connected = true; await atomicJSON(journalPath(dir), { version: 1, state: 'active' }); },
     disconnect: async restart => { calls.push({ action: 'disconnect', restart }); connected = false; await unlink(journalPath(dir)).catch(() => {}); return true; },
+    apply: async (config, restart, prepare) => {
+      calls.push({ action: 'apply', restart });
+      await client.disconnect(restart); await prepare(); await client.launch(config, restart);
+    },
   };
   const gateway = { start: async (config: BridgeConfig) => { calls.push({ action: 'start', config }); }, stop: async (config: BridgeConfig) => { calls.push({ action: 'stop', config }); return true; } };
-  const service = new DesktopService(new ClientRegistry([client]), gateway, dir, async () => catalog);
+  const service = new DesktopService(new ClientRegistry([client]), gateway, dir, async () => catalog, async () => ({ active, routed: 0 }));
   await service.refresh();
-  return { service, dir, calls, gateway, client, setInstalled: (value: boolean) => { installed = value; }, setRunning: (value: boolean) => { running = value; } };
+  return { service, dir, calls, gateway, client, setInstalled: (value: boolean) => { installed = value; }, setRunning: (value: boolean) => { running = value; }, setActive: (value: number) => { active = value; } };
 }
 test('GUI saves model choices without inference or Desktop mutation, then launches through the client adapter', async t => {
   const f = await setup(t);
@@ -38,11 +43,36 @@ test('GUI saves model choices without inference or Desktop mutation, then launch
   assert.equal(await readJSON(configPath(f.dir)), undefined); assert.equal(await readJSON(journalPath(f.dir)), undefined); assert.deepEqual(f.calls, []);
   const state = await f.service.launch('claude', { model: 'bridge-test/a', opus: 'bridge-test/b' }, 65501, false);
   const config = await loadConfig(f.dir);
-  assert.deepEqual(config.routes.map(r => r.ref), ['bridge-test/a', 'bridge-test/b', 'bridge-test/a']);
+  assert.deepEqual(config.routes.map(r => r.ref), ['bridge-test/a', 'bridge-test/b', 'bridge-test/a', 'bridge-test/a', 'bridge-test/a']);
   assert.equal(config.token.length, 64); assert.equal(config.routes[0].auth.none, true);
   assert.deepEqual(f.calls.map(c => c.action), ['start', 'launch']);
   assert.equal(state.clients.find(c => c.id === 'claude')?.status?.connected, true);
   assert.ok(!JSON.stringify(state).includes(config.token));
+});
+test('Apps panel applies five independent mappings, preserves the token, and restores before replacing the gateway', async t => {
+  const f = await setup(t);
+  await f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false);
+  const before = await loadConfig(f.dir); f.calls.length = 0;
+  await f.service.apply('claude', { model: 'bridge-test/a', fable: 'bridge-test/b', sonnet46: 'bridge-test/b', autoMode: true }, 65501, true);
+  const updated = await loadConfig(f.dir);
+  assert.equal(updated.token, before.token); assert.equal(updated.autoMode, true);
+  assert.deepEqual(updated.routes.map(r => [r.slot, r.ref]), [['sonnet', 'bridge-test/a'], ['opus', 'bridge-test/a'], ['haiku', 'bridge-test/a'], ['fable', 'bridge-test/b'], ['sonnet46', 'bridge-test/b']]);
+  assert.deepEqual(f.calls.map(c => c.action), ['apply', 'disconnect', 'stop', 'start', 'launch']);
+  assert.equal((await readJSON(join(f.dir, 'preferences.json')))?.selections.claude.fable, 'bridge-test/b');
+});
+test('Apply and disconnect refuse an active inference request before changing the connection', async t => {
+  const f = await setup(t);
+  await f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false);
+  const before = await loadConfig(f.dir); f.calls.length = 0; f.setActive(1);
+  await assert.rejects(() => f.service.apply('claude', { model: 'bridge-test/b' }, 65501, true), /active request/i);
+  await assert.rejects(() => f.service.disconnect('claude', true), /active request/i);
+  assert.deepEqual(f.calls, []); assert.deepEqual(await loadConfig(f.dir), before);
+});
+test('Apply requires an explicit restart and validates all mappings before disconnecting', async t => {
+  const f = await setup(t);
+  await assert.rejects(() => f.service.apply('claude', { model: 'bridge-test/a' }, 65501, false), /restart/i);
+  await assert.rejects(() => f.service.apply('claude', { model: 'bridge-test/a', fable: 'unavailable/model' }, 65501, true));
+  assert.deepEqual(f.calls, []);
 });
 test('active connections cannot be overwritten, repeated launch reuses routes, and restore precedes stop', async t => {
   const f = await setup(t); const selection = { model: 'bridge-test/a' };
@@ -74,8 +104,9 @@ test('app action serialization prevents simultaneous connection mutations', asyn
   f.gateway.start = async () => { started(); await new Promise<void>(resolve => { release = resolve; }); };
   const launch = f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false);
   await entering;
+  assert.equal(f.service.actionInProgress, true);
   await assert.rejects(() => f.service.save('claude', { model: 'bridge-test/a' }, 65501), /in progress/);
-  release(); await launch;
+  release(); await launch; assert.equal(f.service.actionInProgress, false);
 });
 test('client registry refuses future/unknown integrations and replaces planned metadata when an adapter is implemented', async t => {
   const f = await setup(t);
@@ -86,6 +117,9 @@ test('client registry refuses future/unknown integrations and replaces planned m
 });
 test('native IPC validates actions and rejects arbitrary commands, malformed selections, and implicit restarts', () => {
   assert.deepEqual(parseDesktopRequest({ action: 'refresh' }), { action: 'refresh' });
+  assert.deepEqual(parseDesktopRequest({ action: 'apply', client: 'claude', selection: { model: 'test/a', fable: 'test/b', sonnet46: 'test/c', autoMode: false }, port: 41415, restart: true }), { action: 'apply', client: 'claude', selection: { model: 'test/a', fable: 'test/b', sonnet46: 'test/c', autoMode: false }, port: 41415, restart: true });
+  assert.throws(() => parseDesktopRequest({ action: 'disconnect-quit', client: 'claude' }));
+  assert.throws(() => parseDesktopRequest({ action: 'apply', client: 'claude', selection: { model: 'test/a', autoMode: 'yes' }, port: 41415, restart: true }));
   assert.deepEqual(parseDesktopRequest({ action: 'launch', client: 'claude', selection: { model: 'test/a' }, port: 41415, restart: false }), { action: 'launch', client: 'claude', selection: { model: 'test/a' }, port: 41415, restart: false });
   for (const input of [{ action: 'exec', command: 'evil' }, { action: 'state', token: 'leak' }, { action: 'launch', client: 'claude', selection: { model: 'test/a' }, port: 41415 }, { action: 'save', client: 'claude', selection: { model: 'test/a', baseURL: 'https://evil' }, port: 41415 }, { action: 'save', client: '../evil', selection: { model: 'test/a' }, port: 41415 }, { action: 'save', client: 'claude', selection: { model: 'test/a' }, port: 80 }]) assert.throws(() => parseDesktopRequest(input));
 });
@@ -95,11 +129,12 @@ test('local discovery inspects installed models and uses Ollama native Messages 
     urls.push(String(url));
     if (String(url).endsWith('/api/tags')) return Response.json({ models: [{ name: 'fixture:9b' }, { name: 123 }] });
     assert.equal(JSON.parse(init?.body as string).model, 'fixture:9b');
-    return Response.json({ capabilities: ['completion', 'tools', 'vision'], model_info: { 'fixture.context_length': 131072 } });
+    return Response.json({ capabilities: ['completion', 'tools', 'vision', 'thinking'], model_info: { 'fixture.context_length': 131072 } });
   });
   const model = models.get('ollama-local/fixture:9b')!;
   assert.deepEqual(urls, ['http://127.0.0.1:11434/api/tags', 'http://127.0.0.1:11434/api/show']);
   assert.equal(model.api.npm, '@ai-sdk/anthropic'); assert.equal(model.api.url, 'http://127.0.0.1:11434/v1');
   assert.equal(model.capabilities.toolcall, true); assert.equal(model.capabilities.input.image, true);
+  assert.equal(model.capabilities.reasoning, true);
   assert.equal(model.limit.context, 32768);
 });

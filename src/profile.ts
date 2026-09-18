@@ -2,7 +2,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { unlink } from 'node:fs/promises';
 import { atomicJSON, readJSON, stateDir, withLock } from './storage.js';
-import { modelCatalog } from './gateway.js';
+import { maxEffort } from './effort.js';
+import { routePresentation } from './slots.js';
 import { type BridgeConfig, type Wire } from './types.js';
 
 export const PROFILE_ID = '58971f0b-7944-4c2a-8d49-3039f2bd104b';
@@ -22,8 +23,8 @@ export async function profileChanges(config: BridgeConfig, root = supportRoot())
       deploymentDisplayName: PROFILE_NAME, chatTabEnabled: true, coworkTabEnabled: true,
       isClaudeCodeForDesktopEnabled: true, disableDeploymentModeChooser: true,
       disableEssentialTelemetry: true, disableNonessentialTelemetry: true,
-      autoModeEnabled: false, modelCatalogEnabled: false, inferenceModelPricingEnabled: false,
-      inferenceModels: modelCatalog(config).data.map((m: Wire) => ({ name: m.id, labelOverride: m.display_name, anthropicFamilyTier: m.anthropic_family_tier, isFamilyDefault: true, maxEffort: 'low' })),
+      autoModeEnabled: config.autoMode === true, modelCatalogEnabled: false, inferenceModelPricingEnabled: false,
+      inferenceModels: config.routes.map(route => ({ name: route.id, labelOverride: routePresentation(route).label, anthropicFamilyTier: route.tier, isFamilyDefault: routePresentation(route).familyDefault, maxEffort: maxEffort(route.effort) })),
     },
     [meta]: { appliedId: PROFILE_ID },
     [join(root, 'Claude-3p', 'claude_desktop_config.json')]: { deploymentMode: '3p' },

@@ -3,12 +3,12 @@ import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { readJSON } from './storage.js';
-import { BridgeError, isObject, type Route, type Tier, type Wire } from './types.js';
+import { BridgeError, isObject, type Route, type Slot, type Wire } from './types.js';
+import { effortCapability } from './effort.js';
+import { CLAUDE_SLOTS } from './slots.js';
 
 const exec = promisify(execFile);
-export const SLOTS: Record<Tier, string> = {
-  sonnet: 'claude-sonnet-5', opus: 'claude-opus-5', haiku: 'claude-haiku-4-5-20251001',
-};
+export const SLOTS = Object.fromEntries(CLAUDE_SLOTS.map(slot => [slot.key, slot.id])) as Record<Slot, string>;
 const ENV: Record<string, string> = {
   opencode: 'OPENCODE_API_KEY', anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY',
   nvidia: 'NVIDIA_API_KEY', openrouter: 'OPENROUTER_API_KEY', 'ollama-cloud': 'OLLAMA_API_KEY',
@@ -77,7 +77,7 @@ export async function credentials(route: Route): Promise<string | undefined> {
   if (auth?.type === 'oauth') throw new BridgeError(401, 'authentication_error', `${provider}: OAuth runtime reuse is not implemented. Use an API-key connection.`);
   throw new BridgeError(401, 'authentication_error', `No API key available for ${provider}. Connect it in OpenCode first.`);
 }
-export async function makeRoute(ref: string, tier: Tier, models?: Map<string, Wire>): Promise<Route> {
+export async function makeRoute(ref: string, slot: Slot, models?: Map<string, Wire>): Promise<Route> {
   const model = (models || await inventory()).get(ref);
   if (!model) throw new Error(`Model not found in OpenCode: ${ref}`);
   const protocol = supportedProtocol(model);
@@ -94,7 +94,7 @@ export async function makeRoute(ref: string, tier: Tier, models?: Map<string, Wi
   if (url.username || url.password || url.search || url.hash) throw new Error('Provider base URL must not contain credentials, query parameters, or fragments.');
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw new Error('Provider endpoints must use HTTPS or local loopback HTTP.');
   return {
-    id: SLOTS[tier], tier, ref, label: `${model.name} · ${model.providerID}`,
+    id: SLOTS[slot], tier: slot === 'sonnet46' ? 'sonnet' : slot, slot, ref, label: `${model.name} · ${model.providerID}`,
     protocol, baseURL: baseURL.replace(/\/$/, ''), model: model.api.id,
     auth: { provider: model.providerID, env: ENV[model.providerID],
       ...(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !cfg.options?.apiKey && !process.env[ENV[model.providerID]] ? { none: true } : {}) },
@@ -103,5 +103,6 @@ export async function makeRoute(ref: string, tier: Tier, models?: Map<string, Wi
     maxOutputTokens: model.limit?.output || 4096,
     vision: model.capabilities?.input?.image === true, tools: model.capabilities?.toolcall === true,
     reasoningField: model.capabilities?.interleaved?.field,
+    effort: effortCapability(model, protocol),
   };
 }

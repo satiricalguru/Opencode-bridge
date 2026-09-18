@@ -2,8 +2,9 @@ import { createServer, type Server, type ServerResponse, type IncomingMessage } 
 import { timingSafeEqual } from 'node:crypto';
 import { credentials, providerConfig, resolveEnv } from './opencode.js';
 import { BridgeError, invalid, isObject, type BridgeConfig, type Route, type Wire } from './types.js';
-import { estimateTokens, fromChat, parseSSE, ReasoningReplay, toChat, translateChatStream, validateRequest } from './protocol.js';
+import { estimateTokens, fromChat, normalizeSystemMessages, parseSSE, ReasoningReplay, toChat, translateChatStream, validateRequest } from './protocol.js';
 import { validateConfig } from './config.js';
+import { routePresentation } from './slots.js';
 
 export const SERVICE = 'opencode-claude-bridge';
 export const VERSION = '0.1.0';
@@ -46,14 +47,14 @@ function authorized(req: IncomingMessage, token: string): boolean {
 }
 export function resolveRoute(config: BridgeConfig, model: unknown): Route {
   if (typeof model !== 'string') invalid('model is required.');
-  const route = config.routes.find(r => r.id === model || r.ref === model || r.tier === model);
+  const route = config.routes.find(r => r.id === model || r.ref === model) || config.routes.find(r => r.tier === model && routePresentation(r).familyDefault);
   if (!route) invalid(`Unknown model route. Select an ID advertised by /v1/models.`);
   return route;
 }
 export function modelCatalog(config: BridgeConfig): Wire {
   const data = config.routes.map(route => ({
     id: route.id, type: 'model', display_name: route.label, created_at: '2026-09-17T00:00:00Z',
-    max_tokens: route.maxOutputTokens, anthropic_family_tier: route.tier, is_family_default: true,
+    max_tokens: route.maxOutputTokens, anthropic_family_tier: route.tier, is_family_default: routePresentation(route).familyDefault,
   }));
   return { data, first_id: data[0]?.id, last_id: data.at(-1)?.id, has_more: false };
 }
@@ -93,30 +94,61 @@ export async function startGateway(config: BridgeConfig, options: GatewayOptions
   validateConfig(config);
   const replay = new ReasoningReplay(); const controllers = new Set<AbortController>(); let active = 0; let routed = 0;
   const server = createServer(async (req, res) => {
+    // Anthropic's beta SDK adds ?beta=true to Messages/count_tokens, and model
+    // listing adds pagination parameters. Match the path, never the full URL.
+    const path = (req.url || '').split('?')[0];
     const started = Date.now(); let route: Route | undefined; let keepAlive: NodeJS.Timeout | undefined;
+    let requestSummary: Wire = {};
     let controller: AbortController | undefined; let admitted = false; let outcome = 'completed';
     try {
       // Native client only. Host restrictions also defend against DNS rebinding.
       const allowedHosts = [`127.0.0.1:${(server.address() as any)?.port}`, `localhost:${(server.address() as any)?.port}`];
       if (!allowedHosts.includes(req.headers.host || '') || req.headers.origin !== undefined || !['127.0.0.1', '::ffff:127.0.0.1', '::1'].includes(req.socket.remoteAddress || '')) throw new BridgeError(403, 'permission_error', 'Native loopback clients only.');
-      if (req.url === '/health' && req.method === 'GET') {
+      if (path === '/health' && req.method === 'GET') {
         json(res, 200, { service: SERVICE, version: VERSION, pid: process.pid, ready: true, routes: config.routes.map(r => ({ id: r.id, ref: r.ref, protocol: r.protocol })), routed, active }); return;
       }
       if (!authorized(req, config.token)) throw new BridgeError(401, 'authentication_error', 'Bridge credential required.');
-      if (req.url === '/v1/models') {
+      if (path === '/v1/models' || path.startsWith('/v1/models/')) {
         if (req.method !== 'GET') throw new BridgeError(405, 'invalid_request_error', 'Use GET.');
-        json(res, 200, modelCatalog(config)); return;
+        const catalog = modelCatalog(config);
+        if (path !== '/v1/models') {
+          let id: string;
+          try { id = decodeURIComponent(path.slice('/v1/models/'.length)); } catch { invalid('Invalid model ID encoding.'); }
+          const model = catalog.data.find((item: Wire) => item.id === id);
+          if (!model) throw new BridgeError(404, 'not_found_error', 'Unknown model ID. Select an ID advertised by /v1/models.');
+          json(res, 200, model); return;
+        }
+        json(res, 200, catalog); return;
       }
-      if (!['/v1/messages', '/v1/messages/count_tokens'].includes(req.url || '')) throw new BridgeError(404, 'not_found_error', 'Unknown endpoint.');
+      if (!['/v1/messages', '/v1/messages/count_tokens'].includes(path)) throw new BridgeError(404, 'not_found_error', 'Unknown endpoint.');
       if (req.method !== 'POST') throw new BridgeError(405, 'invalid_request_error', 'Use POST.');
       if (!(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) invalid('Content-Type must be application/json.');
       if (active >= 8) throw new BridgeError(429, 'rate_limit_error', 'Gateway concurrency limit reached.');
       active++; admitted = true;
-      const body = await requestBody(req); route = resolveRoute(config, body.model);
-      if (req.url === '/v1/messages/count_tokens') {
+      let body = await requestBody(req); route = resolveRoute(config, body.model);
+      if (options.log) requestSummary = {
+        ...(Number.isSafeInteger(body.max_tokens) ? { requestedMaxTokens: body.max_tokens } : {}),
+        estimatedInputTokens: estimateTokens(body),
+        ...(Array.isArray(body.tools) ? { toolsCount: body.tools.length } : {}),
+        ...(['enabled', 'disabled', 'adaptive'].includes(body.thinking?.type) ? { thinkingMode: body.thinking.type } : {}),
+      };
+      if (path === '/v1/messages/count_tokens') {
         if (!Array.isArray(body.messages)) invalid('messages must be an array.');
         res.setHeader('x-bridge-token-count', 'estimated'); json(res, 200, { input_tokens: estimateTokens(body) }); return;
       }
+      body = normalizeSystemMessages(body);
+      // Desktop chooses output budgets from the Claude family ID (64k in the
+      // observed Sonnet request), even when its selected backend has a lower cap.
+      // max_tokens is an upper bound: enforce the advertised backend budget.
+      if (Number.isSafeInteger(body.max_tokens) && body.max_tokens > route.maxOutputTokens) {
+        body.max_tokens = route.maxOutputTokens;
+        if (route.protocol === 'anthropic' && body.thinking?.type === 'enabled' && Number.isSafeInteger(body.thinking.budget_tokens) && body.thinking.budget_tokens >= body.max_tokens) {
+          if (body.max_tokens <= 1024) invalid('The backend output budget is too small for explicit Anthropic thinking. Disable thinking for this model.');
+          body.thinking = { ...body.thinking, budget_tokens: body.max_tokens - 1 };
+        }
+        res.setHeader('x-bridge-max-tokens', String(body.max_tokens));
+      }
+      if (options.log && Number.isSafeInteger(body.max_tokens)) requestSummary.effectiveMaxTokens = body.max_tokens;
       validateRequest(body, route);
       const outgoing = route.protocol === 'chat' ? toChat(body, route, replay) : { ...body, model: route.model };
       const key = await (options.credential || credentials)(route);
@@ -179,7 +211,7 @@ export async function startGateway(config: BridgeConfig, options: GatewayOptions
       if (keepAlive) clearInterval(keepAlive);
       if (controller) controllers.delete(controller);
       if (admitted) active--;
-      if (route && req.url === '/v1/messages') options.log?.({ timestamp: new Date().toISOString(), route: route.id, backend: route.ref, status: res.statusCode, outcome, durationMs: Date.now() - started });
+      if (route && path === '/v1/messages') options.log?.({ timestamp: new Date().toISOString(), route: route.id, backend: route.ref, status: res.statusCode, outcome, durationMs: Date.now() - started, ...requestSummary });
     }
   });
   server.requestTimeout = 30_000; server.headersTimeout = 10_000;

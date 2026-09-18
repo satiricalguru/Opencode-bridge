@@ -14,5 +14,6 @@ export interface DesktopClient {
   inspect(config?: BridgeConfig): Promise<ClientStatus>;
   preview(config: BridgeConfig): Promise<Wire>;
   launch(config: BridgeConfig, restart: boolean): Promise<void>;
+  apply?(config: BridgeConfig, restart: boolean, prepare: () => Promise<void>): Promise<void>;
   disconnect(restart: boolean): Promise<boolean>;
 }

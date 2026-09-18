@@ -24,29 +24,49 @@ export async function quitIfNeeded(restart: boolean): Promise<boolean> {
   throw new Error('Claude Desktop did not quit. Quit it manually; no profile change was applied.');
 }
 export async function openDesktop(): Promise<void> { await exec('/usr/bin/open', ['-a', 'Claude']); }
+export interface ClaudeLifecycle {
+  running(): Promise<boolean>;
+  quit(restart: boolean): Promise<boolean>;
+  open(): Promise<void>;
+}
+const desktopLifecycle: ClaudeLifecycle = { running: desktopRunning, quit: quitIfNeeded, open: openDesktop };
 
 export class ClaudeClient implements DesktopClient {
   descriptor = { id: 'claude', name: 'Claude Desktop', description: 'Chat, Code & Cowork', availability: 'available' as const, protocol: 'anthropic-messages' as const };
-  constructor(private directory = stateDir(), private supportRoot?: string) {}
+  constructor(private directory = stateDir(), private supportRoot?: string, private lifecycle: ClaudeLifecycle = desktopLifecycle) {}
   async inspect(config?: BridgeConfig) {
     const paths = ['/Applications/Claude.app', join(homedir(), 'Applications', 'Claude.app')];
     const installed = process.platform === 'darwin' && (await Promise.all(paths.map(p => access(p).then(() => true, () => false)))).some(Boolean);
     const journal = await readJSON(journalPath(this.directory));
     const connected = !!config && await isProfileActive(config, this.directory, this.supportRoot);
-    return { installed, running: process.platform === 'darwin' ? await desktopRunning() : false, connected, recoveryNeeded: !!journal && !connected };
+    return { installed, running: process.platform === 'darwin' ? await this.lifecycle.running() : false, connected, recoveryNeeded: !!journal && !connected };
   }
   preview(config: BridgeConfig) { return previewProfile(config, this.supportRoot); }
   async launch(config: BridgeConfig, restart: boolean): Promise<void> {
-    if (await isProfileActive(config, this.directory, this.supportRoot)) { await openDesktop(); return; }
+    if (await isProfileActive(config, this.directory, this.supportRoot)) { await this.lifecycle.open(); return; }
     if (await readJSON(journalPath(this.directory))) throw new Error('An incomplete or different profile exists. Restore the previous connection before reconnecting.');
-    const reopen = await quitIfNeeded(restart);
+    const reopen = await this.lifecycle.quit(restart);
     try { await activateProfile(config, this.directory, this.supportRoot); }
-    catch (err) { if (reopen) await openDesktop(); throw err; }
-    await openDesktop();
+    catch (err) { if (reopen) await this.lifecycle.open(); throw err; }
+    await this.lifecycle.open();
   }
   async disconnect(restart: boolean): Promise<boolean> {
     if (!await readJSON(journalPath(this.directory))) return false;
-    const reopen = await quitIfNeeded(restart);
-    try { return await restoreProfile(this.directory); } finally { if (reopen) await openDesktop(); }
+    const reopen = await this.lifecycle.quit(restart);
+    try { return await restoreProfile(this.directory); } finally { if (reopen) await this.lifecycle.open(); }
+  }
+  async apply(config: BridgeConfig, restart: boolean, prepare: () => Promise<void>): Promise<void> {
+    const reopen = await this.lifecycle.quit(restart);
+    try {
+      // Restore before replacing routes, so the next journal captures the
+      // original connection rather than the previous Bridge configuration.
+      await restoreProfile(this.directory);
+      await prepare();
+      await activateProfile(config, this.directory, this.supportRoot);
+    } catch (error) {
+      if (reopen) await this.lifecycle.open();
+      throw error;
+    }
+    await this.lifecycle.open();
   }
 }

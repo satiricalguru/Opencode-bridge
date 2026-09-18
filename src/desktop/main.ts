@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, protocol, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, shell, Tray } from 'electron';
 import { mkdir } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -24,13 +24,39 @@ const service = new DesktopService(new ClientRegistry([new ClaudeClient()]), new
 let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
+let requestingQuit = false;
 const show = () => { if (window) { window.show(); window.focus(); } };
+const finishQuit = () => { quitting = true; app.quit(); };
+async function disconnectAndQuit(): Promise<void> {
+  const state = await service.state();
+  const connected = state.clients.filter(client => client.status?.connected || client.status?.recoveryNeeded);
+  for (const client of connected) await service.disconnect(client.id, true);
+  if (!connected.length) await service.stop();
+  finishQuit();
+}
+async function requestQuit(disconnect = false): Promise<void> {
+  if (requestingQuit) return;
+  requestingQuit = true;
+  try {
+    if (service.actionInProgress) throw new Error('Wait for the connection action to finish before quitting Bridge.');
+    const state = await service.state();
+    if (!state.gateway.ready && !state.clients.some(client => client.status?.connected || client.status?.recoveryNeeded)) { finishQuit(); return; }
+    const choice = disconnect ? { response: 0 } : await dialog.showMessageBox({ type: 'question', title: 'Quit OpenCode Bridge', message: 'Disconnect Claude before quitting?',
+      detail: 'Disconnect restores your previous Claude connection, restarts Claude, and stops the gateway. Keep Connected leaves Claude using Bridge after this app quits.',
+      buttons: ['Disconnect & Quit', 'Keep Connected & Quit', 'Cancel'], defaultId: 0, cancelId: 2, noLink: true });
+    if (choice.response === 0) await disconnectAndQuit();
+    else if (choice.response === 1) finishQuit();
+  } catch (error) {
+    show();
+    await dialog.showMessageBox({ type: 'error', title: 'Bridge is still open', message: 'The connection could not be restored.', detail: error instanceof Error ? error.message : 'Refresh your connection and try again.' });
+  } finally { requestingQuit = false; }
+}
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', show);
   app.on('activate', show);
-  app.on('before-quit', () => { quitting = true; });
+  app.on('before-quit', event => { if (!quitting) { event.preventDefault(); void requestQuit(); } });
   app.on('window-all-closed', () => { /* Menu bar companion stays available. */ });
   // Waiting for ready at module top level stalls Electron's ESM startup.
   void app.whenReady().then(async () => {
@@ -61,7 +87,9 @@ else {
         case 'refresh': state = await service.refresh(); break;
         case 'save': state = await service.save(request.client, request.selection, request.port); break;
         case 'launch': state = await service.launch(request.client, request.selection, request.port, request.restart); break;
+        case 'apply': state = await service.apply(request.client, request.selection, request.port, request.restart); break;
         case 'disconnect': state = await service.disconnect(request.client, request.restart); break;
+        case 'disconnect-quit': state = await service.disconnect(request.client, request.restart); setImmediate(finishQuit); break;
         case 'stop': state = await service.stop(); break;
         case 'open-state': await shell.openPath(stateDir()); state = await service.state(); break;
       }
@@ -77,8 +105,9 @@ else {
   tray.on('click', show);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open OpenCode Bridge', click: show }, { type: 'separator' },
-    { label: 'Connections stay running when the app closes', enabled: false },
-    { label: 'Quit OpenCode Bridge', click: () => app.quit() },
+    { label: 'Closing the window keeps Claude connected', enabled: false },
+    { label: 'Disconnect & Quit', click: () => { void requestQuit(true); } },
+    { label: 'Quit OpenCode Bridge…', click: () => app.quit() },
   ]));
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'OpenCode Bridge', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
@@ -87,5 +116,5 @@ else {
   ]));
   await window.loadURL('bridge://app/index.html');
   show();
-  }).catch(() => { console.error('Desktop startup failed. Rebuild the app and check its packaged assets.'); app.quit(); });
+  }).catch(() => { console.error('Desktop startup failed. Rebuild the app and check its packaged assets.'); finishQuit(); });
 }
