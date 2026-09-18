@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "bridge-local": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Ollama local bridge example",
+      "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+      "models": {
+        "ornith:9b": {
+          "name": "Local Ornith 9B",
+          "tool_call": true,
+          "limit": { "context": 32768, "output": 4096 },
+          "cost": { "input": 0, "output": 0 }
+        }
+      }
+    }
+  }
+}

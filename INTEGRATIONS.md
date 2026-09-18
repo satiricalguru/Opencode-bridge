@@ -1,0 +1,57 @@
+# Desktop integration architecture
+
+OpenCode Bridge is now a desktop companion with a reusable model/provider service and a registry of desktop client adapters. Claude is the first implemented client. ChatGPT has a planned descriptor only; there is no claim that its Desktop app accepts this gateway or third-party models.
+
+```mermaid
+flowchart TB
+  UI[Desktop renderer: models, applications, settings] --> IPC[Validated preload IPC]
+  IPC --> S[DesktopService: selection, configuration, connection actions]
+  S --> C[Catalog: OpenCode and installed Ollama models]
+  S --> R[ClientRegistry]
+  S --> G[GatewaySupervisor]
+  R --> CL[ClaudeClient]
+  R -. supported integration required .-> NEXT[Future desktop client adapters]
+  CL --> PM[Claude profile manager and recovery journal]
+  G --> GW[Independent inference gateway process]
+  GW --> A[Native Anthropic / Chat provider adapters]
+  A --> P[Upstream providers and local servers]
+```
+
+## Boundaries
+
+| Module | Owns | Adding a desktop client changes it? |
+| --- | --- | --- |
+| `renderer/` | Model search, selection, application cards, status, actions | Usually descriptor/icon presentation only |
+| `src/desktop/contracts.ts` | Public DTOs; no credentials or unrestricted native API | Only for a new user-facing capability |
+| `src/desktop/main.ts` and `requests.ts` | Trusted IPC, app window/tray, payload validation | Register the new implementation |
+| `src/desktop/catalog.ts` | Model discovery, supported protocol and auth availability | No client-specific setup here |
+| `src/desktop/service.ts` | Action serialization, saved choices, route configuration, gateway orchestration | Shared orchestration; extend capability checks as necessary |
+| `src/clients/` | Client identity, installation/status, preview, launch, disconnect | Implement a new adapter |
+| `src/profile.ts` | Claude-specific file schema, conflict detection, restoration | Keep separate; a different client gets its own configuration manager |
+| `src/runtime.ts` | Gateway start/probe/stop and owned-process verification | Shared across clients |
+| `src/gateway.ts` and `protocol.ts` | Anthropic-facing surface and provider wire translation | Add a client wire surface if a supported client uses another protocol |
+
+Only enabled implementations may perform native actions. Planned descriptors cannot launch or mutate configuration. A registered implementation replaces its matching planned descriptor automatically.
+
+## Adding an integration
+
+1. Establish the target app's supported external inference contract. Opening an application alone is different from making its conversations use a chosen model. Do not implement model replacement through an unsupported assumption.
+2. Implement `DesktopClient` under `src/clients/`: descriptor, installation/running/connection inspection, preview, recoverable launch, and disconnect. Keep bundle IDs and native commands inside the adapter, never accept shell commands or arbitrary application paths from the renderer.
+3. Give the adapter its own recovery journal and configuration lock if it owns a different client store. Capture prior values before mutation; preserve unrelated edits; detect conflicts before restoring. Extend the orchestrator's active-connection checks if multiple clients may be connected concurrently. The current service deliberately manages one active Claude connection.
+4. Declare the required client-facing inference protocol. Anthropic-compatible clients can reuse the existing surface. A client that officially accepts Chat Completions or Responses requires a new gateway surface; existing model discovery and upstream adapters still remain reusable. Disable it until the surface and actual client are tested.
+5. Register the adapter in the main process. Descriptor metadata drives application cards. Persisted selections are already keyed by client ID.
+6. Add orchestration/recovery tests and a real client inference/tool smoke test. Run the IPC tests and packaged-app checks so an unimplemented client cannot accidentally be enabled.
+
+For ChatGPT Desktop, step 1 is a prerequisite still to be researched. Its planned card is disabled, and no auth/profile mutation or model routing is attempted for it.
+
+## Native boundary and process lifecycle
+
+The renderer is a local packaged React UI with Node disabled, context isolation and sandbox enabled, restricted CSP, navigation/popups denied, and a custom secure application protocol. Its preload exposes one typed request method. The main process verifies the exact sender/main frame and validates action-specific payloads; provider keys and the bridge credential do not cross IPC.
+
+Finder-launched apps receive a predictable search path for OpenCode's standard install locations. API keys still come from OpenCode's existing storage/configuration. Environment-only provider keys must be available to the launched app; selecting an absent credential source remains disabled.
+
+The gateway is a detached helper started using Electron's bundled Node runtime, so users do not need a separate Node install for the packaged gateway. Closing the window hides it to the menu bar. Quitting the companion leaves an active gateway available to connected Desktop clients. Restore disconnects the app and stops the owned gateway. Auto-restart, launch-at-login, and signed/notarized distribution are separate future lifecycle features.
+
+Installed Ollama models discovered by the app use Ollama's native Anthropic Messages endpoint. This preserves thinking controls and stream events through its existing adapter. The generic Chat translator remains available for other compatible provider connections. Applied-profile status and completed-inference status are presented separately.
+
+Implementation follows Electron's [security guidance](https://www.electronjs.org/docs/latest/tutorial/security) and [IPC guidance](https://www.electronjs.org/docs/latest/tutorial/ipc). Profile automation remains version-sensitive and requires actual Desktop validation beyond fixture tests.

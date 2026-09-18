@@ -1,0 +1,9 @@
+node_modules/
+dist/
+renderer-dist/
+release/
+release-final/
+.bridge/
+.env
+*.log
+coverage/

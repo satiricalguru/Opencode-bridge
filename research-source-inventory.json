@@ -1,0 +1,124 @@
+{
+  "research_date": "2026-09-17",
+  "method": "Official documentation, exact public source revisions, local app metadata, read-only Ollama UI inspection. No live inference or configuration changes.",
+  "installed_app_versions": {
+    "Claude Desktop": "2.110.1",
+    "Ollama": "0.34.1",
+    "OpenCode Desktop": "1.18.29"
+  },
+  "repositories": [
+    {
+      "repository": "ollama/ollama",
+      "revision": "5ed8dde3a7a5bf4c9047a8a91906b4f6788f60b9",
+      "commit_time": "2026-09-17T01:18:29Z",
+      "files": [
+        {
+          "path": "cmd/launch/claude_desktop.go",
+          "url": "https://github.com/ollama/ollama/blob/5ed8dde3a7a5bf4c9047a8a91906b4f6788f60b9/cmd/launch/claude_desktop.go",
+          "sha256": "e9ca11e453f2628e55edee0fc619cc7ddfbac5f0bbf7f6c7fcc7a60366bc76b1",
+          "lines": 1160
+        },
+        {
+          "path": "internal/proxy/claude_desktop.go",
+          "url": "https://github.com/ollama/ollama/blob/5ed8dde3a7a5bf4c9047a8a91906b4f6788f60b9/internal/proxy/claude_desktop.go",
+          "sha256": "d6930b95737757201e5956c1fb9f135570c3937126add06feb0ab8423435ab69",
+          "lines": 972
+        },
+        {
+          "path": "internal/proxy/claude_desktop_models.go",
+          "url": "https://github.com/ollama/ollama/blob/5ed8dde3a7a5bf4c9047a8a91906b4f6788f60b9/internal/proxy/claude_desktop_models.go",
+          "sha256": "84f0628e70b94a70b1261f616e441efc12ad8dd5a2910bfeccc8932d14a86a4b",
+          "lines": 474
+        },
+        {
+          "path": "app/cmd/app/claude_desktop_status.go",
+          "url": "https://github.com/ollama/ollama/blob/5ed8dde3a7a5bf4c9047a8a91906b4f6788f60b9/app/cmd/app/claude_desktop_status.go",
+          "sha256": "3489ec85d8ed5c36116da348ab88733e587f6eccadff7a26ae53800bd68ad591",
+          "lines": 56
+        },
+        {
+          "path": "anthropic/anthropic.go",
+          "url": "https://github.com/ollama/ollama/blob/5ed8dde3a7a5bf4c9047a8a91906b4f6788f60b9/anthropic/anthropic.go",
+          "sha256": "f6026560a1acf9c03c88180e143d45a4f6841a55ac9df9d65d3fe2739359c16f",
+          "lines": 1307
+        }
+      ]
+    },
+    {
+      "repository": "anomalyco/opencode",
+      "revision": "5a8335857b0ebec44ef6aa1d52b339cf25c329ca",
+      "commit_time": "2026-09-17T09:25:14Z",
+      "files": [
+        {
+          "path": "packages/opencode/src/provider/provider.ts",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/opencode/src/provider/provider.ts",
+          "sha256": "77216c71fd0079da036ac25af516a29ee45f58b52e7c63987065ca97583ee364",
+          "lines": 2072
+        },
+        {
+          "path": "packages/opencode/src/provider/transform.ts",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/opencode/src/provider/transform.ts",
+          "sha256": "c07d49e48dd2478ad2813a10805781a72551db2fd847b7df994cc854bf654c16",
+          "lines": 1909
+        },
+        {
+          "path": "packages/opencode/src/auth/index.ts",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/opencode/src/auth/index.ts",
+          "sha256": "dc897ff4b04dba1ed81f3fe24cdce7289ae32acc6bac60bc430a884bb60ad5b0",
+          "lines": 97
+        },
+        {
+          "path": "packages/opencode/src/session/llm.ts",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/opencode/src/session/llm.ts",
+          "sha256": "5f1dcfb734853e39760e4dd05470f0c7d8752fc5dcc64e118c065149602e402d",
+          "lines": 404
+        },
+        {
+          "path": "packages/opencode/src/server/routes/instance/httpapi/groups/provider.ts",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/opencode/src/server/routes/instance/httpapi/groups/provider.ts",
+          "sha256": "9e9c382d2d7b69dda7a5bab87ed999e400534a268d3f29f7e95d5cd95032d246",
+          "lines": 101
+        },
+        {
+          "path": "packages/llm/src/providers/index.ts",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/llm/src/providers/index.ts",
+          "sha256": "767d5a1b52053397e15eec2e548b5b0daef0603da6dc6c3cc0e2e70cf89421b5",
+          "lines": 11
+        },
+        {
+          "path": "packages/opencode/package.json",
+          "url": "https://github.com/anomalyco/opencode/blob/5a8335857b0ebec44ef6aa1d52b339cf25c329ca/packages/opencode/package.json",
+          "sha256": "778160ff537cfb76b0abdb160292e48268f1d900a29e8e9276863b67d0fca19d",
+          "lines": 158
+        }
+      ]
+    }
+  ],
+  "documentation": [
+    "https://claude.com/docs/third-party/claude-desktop/overview",
+    "https://claude.com/docs/third-party/claude-desktop/gateway",
+    "https://claude.com/docs/third-party/claude-desktop/in-app-configuration",
+    "https://claude.com/docs/third-party/claude-desktop/configuration",
+    "https://claude.com/docs/third-party/claude-desktop/telemetry",
+    "https://platform.claude.com/docs/en/build-with-claude/streaming",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+    "https://ollama.com/blog/claude-desktop",
+    "https://docs.ollama.com/integrations/claude-desktop",
+    "https://docs.ollama.com/api/anthropic-compatibility",
+    "https://opencode.ai/docs/providers/",
+    "https://opencode.ai/docs/config/",
+    "https://opencode.ai/docs/server/",
+    "https://opencode.ai/docs/zen/",
+    "https://opencode.ai/docs/go/",
+    "https://opencode.ai/v2/docs/config/",
+    "https://opencode.ai/v2/docs/providers/",
+    "https://opencode.ai/docs/plugins/",
+    "https://opencode.ai/docs/acp/",
+    "https://developers.cloudflare.com/ai-gateway/integrations/coding-agents/claude-desktop/",
+    "https://docs.litellm.ai/docs/anthropic_unified"
+  ],
+  "regression_reports": [
+    "https://github.com/ollama/ollama/issues/16025",
+    "https://github.com/ollama/ollama/issues/18180"
+  ]
+}

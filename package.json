@@ -1,0 +1,76 @@
+{
+  "name": "opencode-claude-bridge",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "opencode-claude": "dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "smoke": "tsx scripts/live-smoke.ts",
+    "smoke:launcher": "npm run build && tsx scripts/launcher-smoke.ts",
+    "check:ui": "tsc -p tsconfig.renderer.json",
+    "build:app": "npm run build && npm run check:ui && vite build && node scripts/icons.mjs",
+    "app": "npm run build:app && electron .",
+    "package:app": "npm run build:app && electron-builder --mac --arm64 --dir",
+    "package:dmg": "npm run build:app && electron-builder --mac dmg --arm64"
+  },
+  "dependencies": {
+    "jsonc-parser": "3.3.1"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "0.126.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "^8.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "lucide-react": "^1.47.0"
+  },
+  "description": "Select your OpenCode models and launch desktop clients through a recoverable local bridge.",
+  "author": "OpenCode Bridge",
+  "main": "dist/desktop/main.js",
+  "build": {
+    "appId": "dev.opencode.bridge",
+    "productName": "OpenCode Bridge",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer-dist/**/*",
+      "desktop/preload.cjs",
+      "assets/*.png",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png",
+      "identity": null,
+      "artifactName": "OpenCode-Bridge-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "OpenCode Bridge"
+    }
+  }
+}
