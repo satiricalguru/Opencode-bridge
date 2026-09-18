@@ -172,12 +172,22 @@ The model list displays provider, protocol (`anthropic` or `chat`), context limi
 # Initialize with your preferred provider and model
 node dist/cli.js init --model PROVIDER/MODEL
 
-# Optional: customize specific tiers and gateway port
-node dist/cli.js init --model anthropic/claude-3-5-sonnet \
+# Example: Configure with the latest Claude 3.7 Sonnet, Opus & Claude 3.5 Haiku
+node dist/cli.js init --model anthropic/claude-3-7-sonnet \
   --opus anthropic/claude-3-opus \
-  --haiku ollama-local/qwen2.5-coder:7b \
+  --haiku anthropic/claude-3-5-haiku \
   --port 41415
+
+# Example: Route Haiku to a fast local model while using Claude 3.7 Sonnet for main tasks
+node dist/cli.js init --model anthropic/claude-3-7-sonnet \
+  --haiku ollama-local/qwen2.5-coder:7b
 ```
+
+> [!TIP]
+> **Latest Claude Models (Anthropic):**
+> - **Primary / Sonnet:** `anthropic/claude-3-7-sonnet` (Flagship hybrid reasoning) or `anthropic/claude-3-5-sonnet`
+> - **Opus Tier:** `anthropic/claude-3-opus`
+> - **Haiku Tier:** `anthropic/claude-3-5-haiku` (Fastest, latest generation Haiku)
 
 ### 3. Verify Profile Preview
 ```bash
