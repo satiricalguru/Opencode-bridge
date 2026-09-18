@@ -172,22 +172,26 @@ The model list displays provider, protocol (`anthropic` or `chat`), context limi
 # Initialize with your preferred provider and model
 node dist/cli.js init --model PROVIDER/MODEL
 
-# Example: Configure with the latest Claude 3.7 Sonnet, Opus & Claude 3.5 Haiku
-node dist/cli.js init --model anthropic/claude-3-7-sonnet \
-  --opus anthropic/claude-3-opus \
-  --haiku anthropic/claude-3-5-haiku \
+# Example: Configure with the latest Claude 5 generation (Sonnet 5, Opus 5, Haiku 4.5)
+node dist/cli.js init --model anthropic/claude-sonnet-5 \
+  --opus anthropic/claude-opus-5 \
+  --haiku anthropic/claude-haiku-4-5-20251001 \
   --port 41415
 
-# Example: Route Haiku to a fast local model while using Claude 3.7 Sonnet for main tasks
-node dist/cli.js init --model anthropic/claude-3-7-sonnet \
+# Example: Route Haiku to a fast local model while using Claude Sonnet 5 for main tasks
+node dist/cli.js init --model anthropic/claude-sonnet-5 \
   --haiku ollama-local/qwen2.5-coder:7b
 ```
 
 > [!TIP]
-> **Latest Claude Models (Anthropic):**
-> - **Primary / Sonnet:** `anthropic/claude-3-7-sonnet` (Flagship hybrid reasoning) or `anthropic/claude-3-5-sonnet`
-> - **Opus Tier:** `anthropic/claude-3-opus`
-> - **Haiku Tier:** `anthropic/claude-3-5-haiku` (Fastest, latest generation Haiku)
+> **Anthropic Claude Top-Tier Model Hierarchy:**
+>
+> | Model Tier | Identifier | Context | Best For |
+> | :--- | :--- | :--- | :--- |
+> | **Frontier** | `anthropic/claude-fable-5-1` | 1M | Maximum long-horizon reasoning & complex agentic workflows |
+> | **Premium / Opus** | `anthropic/claude-opus-5` | 1M | Enterprise coding, multi-agent systems & deep architecture |
+> | **Flagship / Sonnet** | `anthropic/claude-sonnet-5` *(or `claude-3-7-sonnet`)* | 1M | Recommended daily driver for coding, speed & intelligence |
+> | **Fast / Haiku** | `anthropic/claude-haiku-4-5-20251001` *(or `claude-3-5-haiku`)* | 200K | High-throughput, sub-second latency tasks |
 
 ### 3. Verify Profile Preview
 ```bash
