@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import Anthropic from '@anthropic-ai/sdk';
 import { request as httpRequest } from 'node:http';
 import { startGateway } from '../src/gateway.js';
-import { config, request, stream } from './helpers.js';
-import { parseSSE } from '../src/protocol.js';
+import { config, request, stream, route } from './helpers.js';
+import { fromChat, parseSSE, ReasoningReplay } from '../src/protocol.js';
 import { CLAUDE_SLOTS } from '../src/slots.js';
 
 async function setup(t: test.TestContext, protocol: 'chat' | 'anthropic', upstream: typeof fetch) {
@@ -28,6 +28,10 @@ test('loopback authentication, Host/Origin checks and endpoint/method validation
     const req = httpRequest(`${gateway.url}/v1/models`, { headers: { host: 'evil.example', 'x-api-key': cfg.token } }, res => { res.resume(); resolve(res.statusCode!); }); req.end();
   });
   assert.equal(badHostStatus, 403);
+  const ipv6HostStatus = await new Promise<number>(resolve => {
+    const req = httpRequest(`${gateway.url}/v1/models`, { headers: { host: `[::1]:${new URL(gateway.url).port}`, 'x-api-key': cfg.token } }, res => { res.resume(); resolve(res.statusCode!); }); req.end();
+  });
+  assert.equal(ipv6HostStatus, 200);
   assert.equal((await post(request({ model: 'unknown' }))).status, 400);
   assert.equal((await post(request({ max_tokens: 0 }))).status, 400);
   assert.equal((await post(request({ messages: [{ role: 'system', content: 'bad' }] }))).status, 400);
@@ -113,9 +117,12 @@ test('Desktop-sized output requests are capped to the backend budget with compat
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-bridge-max-tokens'), '4096');
   assert.equal(calls, 1);
+  const equalBudget = await post(request({ max_tokens: 4096, thinking: { type: 'enabled', budget_tokens: 4096 } }));
+  assert.equal(equalBudget.status, 200);
+  assert.equal(calls, 2);
   assert.equal((await post(request({ max_tokens: -1 }))).status, 400);
   assert.equal((await post(request({ max_tokens: 1.5 }))).status, 400);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
 });
 test('each Claude family alias dispatches to its own backend and advertises its actual name', async t => {
   const cfg = config('anthropic');
@@ -197,4 +204,8 @@ test('SSE parser handles multiline data and final frames without a trailing newl
   const body = new Response('event: test\ndata: {"a":\ndata: 1}\n\nevent: end\ndata: done').body!;
   const events = []; for await (const e of parseSSE(body)) events.push(e);
   assert.deepEqual(events, [{ event: 'test', data: '{"a":\n1}' }, { event: 'end', data: 'done' }]);
+});
+test('fromChat provides at least one content block when upstream returns empty content', () => {
+  const res = fromChat({ choices: [{ message: { content: null }, finish_reason: 'stop' }], usage: {} }, route(), new ReasoningReplay());
+  assert.deepEqual(res.content, [{ type: 'text', text: '' }]);
 });

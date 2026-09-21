@@ -40,7 +40,7 @@ async function setup(t: test.TestContext) {
 test('GUI saves model choices without inference or Desktop mutation, then launches through the client adapter', async t => {
   const f = await setup(t);
   await f.service.save('claude', { model: 'bridge-test/a', opus: 'bridge-test/b' }, 65501);
-  assert.equal(await readJSON(configPath(f.dir)), undefined); assert.equal(await readJSON(journalPath(f.dir)), undefined); assert.deepEqual(f.calls, []);
+  assert.equal(await readJSON(configPath(f.dir)), undefined); assert.equal(await readJSON(journalPath(f.dir)), undefined); assert.equal(f.calls.length, 0);
   const state = await f.service.launch('claude', { model: 'bridge-test/a', opus: 'bridge-test/b' }, 65501, false);
   const config = await loadConfig(f.dir);
   assert.deepEqual(config.routes.map(r => r.ref), ['bridge-test/a', 'bridge-test/b', 'bridge-test/a', 'bridge-test/a', 'bridge-test/a']);
@@ -66,13 +66,13 @@ test('Apply and disconnect refuse an active inference request before changing th
   const before = await loadConfig(f.dir); f.calls.length = 0; f.setActive(1);
   await assert.rejects(() => f.service.apply('claude', { model: 'bridge-test/b' }, 65501, true), /active request/i);
   await assert.rejects(() => f.service.disconnect('claude', true), /active request/i);
-  assert.deepEqual(f.calls, []); assert.deepEqual(await loadConfig(f.dir), before);
+  assert.equal(f.calls.length, 0); assert.deepEqual(await loadConfig(f.dir), before);
 });
 test('Apply requires an explicit restart and validates all mappings before disconnecting', async t => {
   const f = await setup(t);
   await assert.rejects(() => f.service.apply('claude', { model: 'bridge-test/a' }, 65501, false), /restart/i);
   await assert.rejects(() => f.service.apply('claude', { model: 'bridge-test/a', fable: 'unavailable/model' }, 65501, true));
-  assert.deepEqual(f.calls, []);
+  assert.equal(f.calls.length, 0);
 });
 test('active connections cannot be overwritten, repeated launch reuses routes, and restore precedes stop', async t => {
   const f = await setup(t); const selection = { model: 'bridge-test/a' };
@@ -95,7 +95,7 @@ test('missing apps and running Desktop without restart permission fail before ga
   await assert.rejects(() => f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false), /not installed/);
   f.setInstalled(true); f.setRunning(true);
   await assert.rejects(() => f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false), /Restart Claude/);
-  assert.deepEqual(f.calls, []); assert.equal(await readJSON(configPath(f.dir)), undefined);
+  assert.equal(f.calls.length, 0); assert.equal(await readJSON(configPath(f.dir)), undefined);
 });
 test('app action serialization prevents simultaneous connection mutations', async t => {
   const f = await setup(t);
@@ -137,4 +137,10 @@ test('local discovery inspects installed models and uses Ollama native Messages 
   assert.equal(model.capabilities.toolcall, true); assert.equal(model.capabilities.input.image, true);
   assert.equal(model.capabilities.reasoning, true);
   assert.equal(model.limit.context, 32768);
+});
+test('gateway is stopped if client launch throws an error', async t => {
+  const f = await setup(t);
+  f.client.launch = async () => { throw new Error('Simulated client launch failure'); };
+  await assert.rejects(() => f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false), /Simulated client launch failure/);
+  assert.deepEqual(f.calls.map(c => c.action), ['start', 'stop']);
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { makeRoute, credentials, parseModels, supportedProtocol } from '../src/opencode.js';
+import { makeRoute, credentials, parseModels, supportedProtocol, resolveEnv } from '../src/opencode.js';
 import { atomicJSON, readJSON } from '../src/storage.js';
 import { initialize, configPath } from '../src/config.js';
 import { route } from './helpers.js';
@@ -13,6 +13,20 @@ test('parse multiline CLI model metadata and identify unsupported runtime types'
   const models = parseModels(text); assert.equal(models.size, 2);
   assert.equal(supportedProtocol(models.get('provider/model')!), 'anthropic');
   assert.equal(supportedProtocol(models.get('provider/other')!), undefined);
+});
+test('parseModels tolerates corrupted JSON chunks and continues parsing remaining models', () => {
+  const text = `provider/bad\n{\n  "corrupted json\n}\nprovider/good\n{\n  "name": "Good"\n}\n`;
+  const models = parseModels(text);
+  assert.equal(models.size, 1);
+  assert.equal(models.get('provider/good')?.name, 'Good');
+});
+test('resolveEnv preserves empty string environment variables without throwing', () => {
+  process.env.TEST_EMPTY_VAR = '';
+  try {
+    assert.equal(resolveEnv('prefix-{env:TEST_EMPTY_VAR}-suffix'), 'prefix--suffix');
+  } finally {
+    delete process.env.TEST_EMPTY_VAR;
+  }
 });
 test('selected custom provider endpoint is imported without persisting configured API keys', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'bridge-import-test-')); t.after(() => rm(dir, { recursive: true, force: true }));

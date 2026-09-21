@@ -25,7 +25,7 @@ Updated 18 September 2026. Initial implementation: `opencode-claude-bridge` 0.1.
 | Check | Result | Scope |
 | --- | --- | --- |
 | `npm run check` | Passed | Strict TypeScript checking of production code |
-| `npm test` | 41 passed, 0 failed | Protocol/recovery, GUI orchestration, local discovery, action serialization, registry gating, IPC, beta SDK queries, five-backend slot dispatch, output caps, inline system normalization, effort capabilities, and real client recovery with isolated lifecycle hooks |
+| `npm test` | 45 passed, 0 failed | Protocol/recovery, GUI orchestration, local discovery, action serialization, registry gating, IPC, beta SDK queries, five-backend slot dispatch, output caps, inline system normalization, effort capabilities, IPv6 loopback host, thinking budget clamping, empty turn block fallback, launch failure gateway cleanup, and model parsing resilience |
 | `npm run check:ui` and `npm run build:app` | Passed | Typed React renderer and compiled app assets |
 | `npm run build` | Passed | Compiled CLI/gateway with declarations and source maps |
 | `npm run smoke:launcher` | Passed | Real background subprocess start/reuse, one local fixture inference request, status/preview, stop, isolated state |

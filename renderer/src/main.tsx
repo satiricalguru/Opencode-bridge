@@ -1,3 +1,4 @@
+/// <reference path="./global.d.ts" />
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Activity, ArrowDownLeft, ArrowUpRight, Asterisk, Check, ChevronDown, CircleHelp, Cpu, FolderOpen, Layers3, LoaderCircle, Monitor, Plug, RefreshCw, Search, Settings2, ShieldCheck, Undo2, X } from 'lucide-react';
@@ -46,9 +47,9 @@ function App() {
         const id = next.preferences.selectedClient;
         setClient(id);
         setPort(next.preferences.port);
-        setSelection(normalizeSelection(next.preferences.selections[id] || { model: next.models.find(m => m.enabled)?.ref || '' }));
+        setSelection(normalizeSelection(next.preferences.selections[id] || { model: next.models.find((m: ModelItem) => m.enabled)?.ref || '' }));
         hydrated.current = true;
-      } else if (value.action === 'refresh') setSelection(s => s.model ? s : normalizeSelection({ model: next.models.find(m => m.enabled)?.ref || '' }));
+      } else if (value.action === 'refresh') setSelection(s => s.model ? s : normalizeSelection({ model: next.models.find((m: ModelItem) => m.enabled)?.ref || '' }));
       if (success) setMessage(success);
     } catch { setError('The desktop service could not be reached. Reopen the app and try again.'); }
     finally { busyRef.current = false; setBusy(''); }
@@ -56,7 +57,15 @@ function App() {
   useEffect(() => {
     void (async () => { await request({ action: 'state' }); await request({ action: 'refresh' }, 'Reading your connections'); })();
     const timer = setInterval(() => { void request({ action: 'state' }); }, 8000);
-    return () => clearInterval(timer);
+    const onFocus = () => { void request({ action: 'state' }); };
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void request({ action: 'state' }); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
   useEffect(() => { setLimit(80); }, [query, provider, readyOnly]);
 
