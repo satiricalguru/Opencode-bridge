@@ -62,26 +62,33 @@ export function usage(value: Wire = {}): Wire {
 // Keep it in bounded process memory, keyed by route and opaque tool IDs, not fake
 // Anthropic thinking blocks/signatures. Nothing is logged or written to disk.
 export class ReasoningReplay {
-  private items = new Map<string, { text: string; expires: number }>();
+  private items = new Map<string, { entry: { text: string; size: number }; expires: number }>();
   private bytes = 0;
   private remove(key: string): void {
-    const item = this.items.get(key); if (item) this.bytes -= Buffer.byteLength(item.text);
+    const item = this.items.get(key);
     this.items.delete(key);
+    if (item && ![...this.items.values()].some(i => i.entry === item.entry)) {
+      this.bytes -= item.entry.size;
+    }
   }
   remember(route: Route, calls: Wire[], text: string): void {
     if (!text || !route.reasoningField) return;
     const size = Buffer.byteLength(text);
     if (size > 4 * 1024 * 1024) throw new BridgeError(502, 'api_error', 'Upstream reasoning output exceeds the size limit.');
+    const entry = { text, size };
+    let added = false;
     for (const call of calls) {
       const key = `${route.ref}:${call.id}`; this.remove(key);
-      this.items.set(key, { text, expires: Date.now() + 3_600_000 }); this.bytes += size;
+      this.items.set(key, { entry, expires: Date.now() + 3_600_000 });
+      added = true;
     }
+    if (added) this.bytes += size;
     while (this.items.size > 256 || this.bytes > 16 * 1024 * 1024) this.remove(this.items.keys().next().value!);
   }
   get(route: Route, calls: Wire[]): string | undefined {
     for (const call of calls) {
       const key = `${route.ref}:${call.id}`; const item = this.items.get(key);
-      if (item && item.expires > Date.now()) return item.text;
+      if (item && item.expires > Date.now()) return item.entry.text;
       if (item) this.remove(key);
     }
     return undefined;
@@ -164,6 +171,7 @@ export function fromChat(data: Wire, route: Route, replay: ReasoningReplay): Wir
     content.push({ type: 'tool_use', id: call.id, name: call.function.name, input });
   }
   replay.remember(route, message.tool_calls || [], message[route.reasoningField || 'reasoning_content'] || '');
+  if (!content.length) content.push({ type: 'text', text: '' });
   return { id: `msg_${randomUUID().replaceAll('-', '')}`, type: 'message', role: 'assistant', model: route.id, content, stop_reason: stopReason(choice.finish_reason), stop_sequence: null, usage: usage(data.usage) };
 }
 export interface SSEEvent { event: string; data: string }
@@ -220,9 +228,13 @@ export async function translateChatStream(body: ReadableStream<Uint8Array>, rout
     }
     if (size + reasoning.length > 4 * 1024 * 1024) throw new BridgeError(502, 'api_error', 'Upstream tool/reasoning output exceeds the size limit.');
   }
-  if (!complete || !finish) throw new BridgeError(502, 'api_error', 'Upstream stream ended before completion.');
+  if (!complete && !finish) throw new BridgeError(502, 'api_error', 'Upstream stream ended before completion.');
   if (textOpen) await emit('content_block_stop', { type: 'content_block_stop', index: 0 });
-  let index = textOpen ? 1 : 0;
+  else if (calls.size === 0) {
+    await emit('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
+    await emit('content_block_stop', { type: 'content_block_stop', index: 0 });
+  }
+  let index = textOpen || calls.size === 0 ? 1 : 0;
   // Buffer tool metadata to tolerate split names/IDs and interleaved parallel calls.
   for (const [, call] of [...calls.entries()].sort(([a], [b]) => a - b)) {
     let parsed: unknown;

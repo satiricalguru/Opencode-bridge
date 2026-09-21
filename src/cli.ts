@@ -6,7 +6,8 @@ import { configPath, initialize, loadConfig, publicConfig } from './config.js';
 import { atomicJSON, readJSON, stateDir } from './storage.js';
 import { SERVICE, VERSION, startGateway } from './gateway.js';
 import { activateProfile, isProfileActive, journalPath, previewProfile, restoreProfile } from './profile.js';
-import { type Tier } from './types.js';
+import { type Slot, type Tier } from './types.js';
+import { CLAUDE_SLOTS } from './slots.js';
 import { GatewaySupervisor, probeGateway as probe } from './runtime.js';
 import { quitIfNeeded, openDesktop } from './clients/claude.js';
 
@@ -15,8 +16,10 @@ const print = (value: unknown) => console.log(JSON.stringify(value, null, 2));
 const help = `OpenCode Claude Bridge ${VERSION}
 
   models [--provider ID]                 List models and protocol support
-  init --model PROVIDER/MODEL            Map all three Claude tiers to this model
+  init --model PROVIDER/MODEL            Map Claude model slots to this model
        [--opus REF] [--haiku REF]        Override auxiliary tiers
+       [--fable REF] [--sonnet46 REF]    Extended model slots
+       [--auto-mode]                     Enable Claude auto mode
        [--port 41415]                    Local gateway port
   serve                                 Run gateway in this terminal
   start                                 Run compiled gateway in the background
@@ -34,6 +37,7 @@ OPENCODE_CONFIG_DIR. Keys are resolved from OpenCode or provider env at runtime.
 async function main() {
   const { positionals, values } = parseArgs({ allowPositionals: true, options: {
     model: { type: 'string' }, opus: { type: 'string' }, haiku: { type: 'string' },
+    fable: { type: 'string' }, sonnet46: { type: 'string' }, 'auto-mode': { type: 'boolean' },
     provider: { type: 'string' }, port: { type: 'string' }, apply: { type: 'boolean' }, restart: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
   } });
   const command = positionals[0] || 'help';
@@ -46,10 +50,17 @@ async function main() {
   if (command === 'init') {
     if (!values.model) throw new Error('Specify --model PROVIDER/MODEL.');
     const models = await inventory(); const routes = [];
-    for (const tier of ['sonnet', 'opus', 'haiku'] as Tier[]) routes.push(await makeRoute(tier === 'opus' ? values.opus || values.model : tier === 'haiku' ? values.haiku || values.model : values.model, tier, models));
+    const slotRefs: Record<Slot, string> = {
+      sonnet: values.model,
+      opus: values.opus || values.model,
+      haiku: values.haiku || values.model,
+      fable: values.fable || values.model,
+      sonnet46: values.sonnet46 || values.model,
+    };
+    for (const slot of CLAUDE_SLOTS) routes.push(await makeRoute(slotRefs[slot.key], slot.key, models));
     // Check auth without making an inference request or persisting upstream keys.
     for (const route of routes) await credentials(route);
-    const config = await initialize(routes, values.port ? Number(values.port) : 41415);
+    const config = await initialize(routes, values.port ? Number(values.port) : 41415, stateDir(), values['auto-mode']);
     print({ configFile: configPath(), ...publicConfig(config) }); return;
   }
   if (command === 'restore') {

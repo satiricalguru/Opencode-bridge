@@ -59,7 +59,7 @@ export function modelCatalog(config: BridgeConfig): Wire {
   return { data, first_id: data[0]?.id, last_id: data.at(-1)?.id, has_more: false };
 }
 async function writeEvent(res: ServerResponse, event: string, data: Wire): Promise<void> {
-  if (res.destroyed) throw new Error('Client disconnected.');
+  if (res.destroyed || res.writableEnded || !res.writable) throw new Error('Client disconnected.');
   if (!res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)) {
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => { res.off('drain', drain); res.off('close', closed); };
@@ -102,7 +102,8 @@ export async function startGateway(config: BridgeConfig, options: GatewayOptions
     let controller: AbortController | undefined; let admitted = false; let outcome = 'completed';
     try {
       // Native client only. Host restrictions also defend against DNS rebinding.
-      const allowedHosts = [`127.0.0.1:${(server.address() as any)?.port}`, `localhost:${(server.address() as any)?.port}`];
+      const port = (server.address() as any)?.port;
+      const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`];
       if (!allowedHosts.includes(req.headers.host || '') || req.headers.origin !== undefined || !['127.0.0.1', '::ffff:127.0.0.1', '::1'].includes(req.socket.remoteAddress || '')) throw new BridgeError(403, 'permission_error', 'Native loopback clients only.');
       if (path === '/health' && req.method === 'GET') {
         json(res, 200, { service: SERVICE, version: VERSION, pid: process.pid, ready: true, routes: config.routes.map(r => ({ id: r.id, ref: r.ref, protocol: r.protocol })), routed, active }); return;
@@ -142,11 +143,11 @@ export async function startGateway(config: BridgeConfig, options: GatewayOptions
       // max_tokens is an upper bound: enforce the advertised backend budget.
       if (Number.isSafeInteger(body.max_tokens) && body.max_tokens > route.maxOutputTokens) {
         body.max_tokens = route.maxOutputTokens;
-        if (route.protocol === 'anthropic' && body.thinking?.type === 'enabled' && Number.isSafeInteger(body.thinking.budget_tokens) && body.thinking.budget_tokens >= body.max_tokens) {
-          if (body.max_tokens <= 1024) invalid('The backend output budget is too small for explicit Anthropic thinking. Disable thinking for this model.');
-          body.thinking = { ...body.thinking, budget_tokens: body.max_tokens - 1 };
-        }
         res.setHeader('x-bridge-max-tokens', String(body.max_tokens));
+      }
+      if (route.protocol === 'anthropic' && body.thinking?.type === 'enabled' && Number.isSafeInteger(body.thinking.budget_tokens) && Number.isSafeInteger(body.max_tokens) && body.thinking.budget_tokens >= body.max_tokens) {
+        if (body.max_tokens <= 1024) invalid('The backend output budget is too small for explicit Anthropic thinking. Disable thinking for this model.');
+        body.thinking = { ...body.thinking, budget_tokens: body.max_tokens - 1 };
       }
       if (options.log && Number.isSafeInteger(body.max_tokens)) requestSummary.effectiveMaxTokens = body.max_tokens;
       validateRequest(body, route);
@@ -183,6 +184,10 @@ export async function startGateway(config: BridgeConfig, options: GatewayOptions
           else {
             let complete = false;
             for await (const item of parseSSE(response.body)) {
+              if (item.event === 'ping') {
+                await emit('ping', { type: 'ping' });
+                continue;
+              }
               let data: Wire;
               try { data = JSON.parse(item.data); } catch { throw new BridgeError(502, 'api_error', 'Invalid native stream JSON.'); }
               if (item.event === 'message_start' && data.message) data.message.model = route.id;

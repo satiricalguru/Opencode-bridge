@@ -100,7 +100,12 @@ export class DesktopService {
       const prefs = await this.preferences();
       await atomicJSON(join(this.directory, 'preferences.json'), { ...prefs, selectedClient: clientId, port, selections: { ...prefs.selections, [clientId]: selection } });
       await this.gateway.start(config);
-      await client.launch(config, restart);
+      try {
+        await client.launch(config, restart);
+      } catch (err) {
+        await this.gateway.stop(config).catch(() => {});
+        throw err;
+      }
       return this.state();
     });
   }
@@ -122,14 +127,21 @@ export class DesktopService {
       if (!(await client.inspect(previous)).installed) throw new Error(`${client.descriptor.name} is not installed in Applications.`);
       const config = await this.build(selection, port, previous);
       await this.assertIdle(previous);
-      await client.apply(config, restart, async () => {
-        if (previous) await this.gateway.stop(previous);
-        await withLock(this.directory, async () => {
-          if (await readJSON(journalPath(this.directory))) throw new Error('The connection changed in another process. Refresh before applying models.');
-          await atomicJSON(configPath(this.directory), config);
+      let startedNewGateway = false;
+      try {
+        await client.apply(config, restart, async () => {
+          if (previous) await this.gateway.stop(previous);
+          await withLock(this.directory, async () => {
+            if (await readJSON(journalPath(this.directory))) throw new Error('The connection changed in another process. Refresh before applying models.');
+            await atomicJSON(configPath(this.directory), config);
+          });
+          await this.gateway.start(config);
+          startedNewGateway = true;
         });
-        await this.gateway.start(config);
-      });
+      } catch (err) {
+        if (startedNewGateway) await this.gateway.stop(config).catch(() => {});
+        throw err;
+      }
       const prefs = await this.preferences();
       await atomicJSON(join(this.directory, 'preferences.json'), { ...prefs, selectedClient: clientId, port, selections: { ...prefs.selections, [clientId]: selection } });
       return this.state();

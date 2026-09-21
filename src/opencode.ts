@@ -18,8 +18,10 @@ export function parseModels(text: string): Map<string, Wire> {
   // CLI output: a model reference followed by one pretty-printed JSON object.
   const pattern = /^([^\s]+\/[^\s]+)\r?\n(\{[\s\S]*?^\})/gm;
   for (const match of text.matchAll(pattern)) {
-    const data = JSON.parse(match[2]);
-    if (isObject(data)) result.set(match[1], data);
+    try {
+      const data = JSON.parse(match[2]);
+      if (isObject(data)) result.set(match[1], data);
+    } catch {}
   }
   return result;
 }
@@ -41,7 +43,7 @@ export function supportedProtocol(model: Wire): 'anthropic' | 'chat' | undefined
 export function resolveEnv(value: unknown): unknown {
   if (typeof value === 'string') return value.replace(/\{env:([^}]+)\}|\$\{([^}]+)\}/g, (_, a, b) => {
     const name = a || b;
-    if (!process.env[name]) throw new Error(`Missing environment variable ${name}`);
+    if (process.env[name] === undefined) throw new Error(`Missing environment variable ${name}`);
     return process.env[name]!;
   });
   if (Array.isArray(value)) return value.map(resolveEnv);

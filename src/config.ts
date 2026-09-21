@@ -25,10 +25,10 @@ export function validateConfig(value: unknown): asserts value is BridgeConfig {
 export async function loadConfig(directory = stateDir()): Promise<BridgeConfig> {
   const value = await readJSON(configPath(directory)); validateConfig(value); return value;
 }
-export async function initialize(routes: Route[], port = 41415, directory = stateDir()): Promise<BridgeConfig> {
+export async function initialize(routes: Route[], port = 41415, directory = stateDir(), autoMode?: boolean): Promise<BridgeConfig> {
   const previous = await readJSON(configPath(directory));
   if (previous) throw new Error('Bridge is already initialized. Use a different BRIDGE_STATE_DIR or edit its routes after stopping the gateway.');
-  const config: BridgeConfig = { version: 1, port, token: randomBytes(32).toString('hex'), routes };
+  const config: BridgeConfig = { version: 1, port, token: randomBytes(32).toString('hex'), routes, ...(autoMode !== undefined ? { autoMode } : {}) };
   validateConfig(config); await atomicJSON(configPath(directory), config); return config;
 }
 export function publicConfig(config: BridgeConfig) {
