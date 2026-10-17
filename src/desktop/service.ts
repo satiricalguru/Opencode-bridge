@@ -12,6 +12,8 @@ import { CLAUDE_SLOTS, routeSlot } from '../slots.js';
 import type { ClientRegistry } from '../clients/registry.js';
 import type { LaunchOptions } from '../clients/types.js';
 import { discoverCatalog, ensureLmStudio, type Catalog } from './catalog.js';
+import { readCodexNames, type CodexName } from '../clients/codex-names.js';
+import { codexHome } from '../clients/codex.js';
 import { ModelWatcher, type ChangeKind, type Fingerprint } from './watch.js';
 import type { DesktopState, ModelItem, Preferences, Selection } from './contracts.js';
 
@@ -23,7 +25,9 @@ export class DesktopService {
   get actionInProgress(): boolean { return this.mutating; }
   private watcher?: ModelWatcher;
   private loaded = false;
-  constructor(private clients: ClientRegistry, private gateway: GatewayControl, private directory = stateDir(), private discover: (reuse?: Map<string, any>) => Promise<Catalog> = discoverCatalog, private probe = probeGateway, private prepareLocal: (keys: string[]) => Promise<void> = ensureLmStudio) {}
+  constructor(private clients: ClientRegistry, private gateway: GatewayControl, private directory = stateDir(), private discover: (reuse?: Map<string, any>) => Promise<Catalog> = discoverCatalog, private probe = probeGateway, private prepareLocal: (keys: string[]) => Promise<void> = ensureLmStudio, private codexNames: () => Promise<CodexName[]> = () => readCodexNames(codexHome())) {}
+  // Set by the app after a background release check.
+  update?: { version: string; url: string };
   // Re-discovers when Ollama, LM Studio or OpenCode change and reports newly ready models.
   // Local-only changes reuse the cached OpenCode inventory.
   async refreshFor(kinds: ChangeKind[]): Promise<{ state: DesktopState; added: ModelItem[]; removed: ModelItem[] }> {
@@ -63,7 +67,12 @@ export class DesktopService {
       const primary = config.routes.find(r => routeSlot(r) === 'sonnet') || config.routes[0];
       fromConfig.claude = { model: primary.ref, ...Object.fromEntries(config.routes.filter(r => routeSlot(r) !== 'sonnet').map(r => [routeSlot(r), r.ref])), autoMode: config.autoMode === true, ...(Object.keys(effort(config.routes)).length ? { effort: effort(config.routes) } : {}) };
     }
-    if (config?.codexRoutes?.length) fromConfig.codex = { model: config.codexRoutes[0].ref, ...(config.codexRoutes[0].effortOverride ? { effort: { sonnet: config.codexRoutes[0].effortOverride } } : {}) };
+    if (config?.codexRoutes?.length) {
+      const [primary, ...rest] = config.codexRoutes;
+      const names = Object.fromEntries(rest.filter(r => r.ref !== primary.ref).map(r => [r.id, r.ref]));
+      const nameEffort = Object.fromEntries(rest.filter(r => r.effortOverride).map(r => [r.id, r.effortOverride!])) as Record<string, Effort>;
+      fromConfig.codex = { model: primary.ref, ...(primary.displayName ? { primary: primary.id } : {}), ...(Object.keys(names).length ? { names } : {}), ...(Object.keys(nameEffort).length ? { nameEffort } : {}), ...(primary.effortOverride ? { effort: { sonnet: primary.effortOverride } } : {}) };
+    }
     return { version: 1, selectedClient: saved?.selectedClient || 'claude', selections: { ...fromConfig, ...saved?.selections }, port: saved?.port || config?.port || 41415, agent: saved?.agent || config?.opencode || defaultAgentSettings() };
   }
   async refresh(): Promise<DesktopState> { this.catalog = await this.discover(); this.loaded = true; return this.state(); }
@@ -73,11 +82,12 @@ export class DesktopService {
     let health: any;
     if (config) { try { health = await this.probe(config); } catch {} }
     const clients = await Promise.all(this.clients.descriptors().map(async descriptor => descriptor.availability === 'available' ? { ...descriptor, status: await this.clients.get(descriptor.id).inspect(config) } : descriptor));
-    const summary = (r: Route) => ({ tier: r.tier, slot: routeSlot(r), ref: r.ref, label: r.label, protocol: r.protocol, ...(r.effortOverride ? { effort: r.effortOverride } : {}) });
-    return { version: VERSION, models: this.catalog.items, notices: this.catalog.notices, preferences, clients, gateway: { ready: !!health, active: health?.active || 0, routed: health?.routed || 0, port: config?.port || preferences.port }, savedRoutes: config?.routes.map(summary) || [], codexRoutes: config?.codexRoutes?.map(summary) || [] };
+    const summary = (r: Route) => ({ id: r.id, tier: r.tier, slot: routeSlot(r), ref: r.ref, label: r.label, protocol: r.protocol, ...(r.effortOverride ? { effort: r.effortOverride } : {}), ...(r.displayName ? { displayName: r.displayName } : {}) });
+    const codexNames = await this.codexNames();
+    return { version: VERSION, models: this.catalog.items, notices: this.catalog.notices, preferences, clients, gateway: { ready: !!health, active: health?.active || 0, routed: health?.routed || 0, port: config?.port || preferences.port }, savedRoutes: config?.routes.map(summary) || [], codexRoutes: config?.codexRoutes?.map(summary) || [], codexNames, ...(this.update ? { update: this.update } : {}) };
   }
   private refsOf(clientId: string, selection: Selection): string[] {
-    return clientId === 'codex' ? [selection.model] : [selection.model, selection.opus, selection.haiku, selection.fable, selection.sonnet46].filter((ref): ref is string => !!ref);
+    return clientId === 'codex' ? [selection.model, ...Object.values(selection.names || {})] : [selection.model, selection.opus, selection.haiku, selection.fable, selection.sonnet46].filter((ref): ref is string => !!ref);
   }
   private validate(client: string, selection: Selection, port: number): void {
     this.clients.get(client);
@@ -103,7 +113,19 @@ export class DesktopService {
   // Each client owns its own routes; changing one never rewrites the other's.
   private async build(clientId: string, selection: Selection, port: number, previous?: BridgeConfig, agent?: OpenCodeAgentSettings): Promise<BridgeConfig> {
     const base: BridgeConfig = previous ? { ...previous, port } : { version: 1, token: randomBytes(32).toString('hex'), port, routes: [] };
-    if (clientId === 'codex') base.codexRoutes = [await this.route(selection.model, 'codex', selection.effort?.sonnet)];
+    if (clientId === 'codex') {
+      // Codex keeps its own names; each is answered by the chosen backend. The default
+      // name comes first: it becomes Codex's selected model.
+      const names = await this.codexNames();
+      const primary = names.find(n => n.slug === selection.primary) || names[0];
+      const ordered = [primary, ...names.filter(n => n.slug !== primary.slug)];
+      base.codexRoutes = await Promise.all(ordered.map(async name => {
+        const own = name.slug === primary.slug;
+        const ref = own ? selection.model : selection.names?.[name.slug] || selection.model;
+        const effort = own ? selection.effort?.sonnet : selection.nameEffort?.[name.slug] ?? (ref === selection.model ? selection.effort?.sonnet : undefined);
+        return { ...await this.route(ref, 'codex', effort), id: name.slug, displayName: name.label };
+      }));
+    }
     else {
       const refs = this.refs(selection);
       base.routes = await Promise.all(CLAUDE_SLOTS.map(slot => this.route(refs[slot.key], slot.key, selection.effort?.[slot.key])));

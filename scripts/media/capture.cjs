@@ -86,6 +86,8 @@ app.whenReady().then(async () => {
       const launch = await still(win, `launchpad-${theme}`);
       await framed(pages.url, launch, `hero-${theme}`, theme);
       await click(win, '.nav button', 'Applications'); await sleep(1500); await still(win, `applications-${theme}`);
+      await js(win, `document.querySelector('[aria-label="Codex model configuration"]').scrollIntoView({ block: 'start' })`); await sleep(900); await still(win, `codex-names-${theme}`);
+      await js(win, `document.querySelector('main').scrollTo(0, 0)`);
       await click(win, '.nav button', 'Settings'); await sleep(1500); await still(win, `settings-${theme}`);
       await click(win, '.nav button', 'Launchpad'); await click(win, '.segmented button', 'Codex'); await sleep(1200); await still(win, `codex-${theme}`);
       retire(win);

@@ -1,7 +1,7 @@
 /// <reference path="./global.d.ts" />
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, AppWindow, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, CircleAlert, Cpu, FolderOpen, Gauge, Layers3, LoaderCircle, LogOut, Monitor, Moon, Radar, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, SquareTerminal, Sun, Undo2, X } from 'lucide-react';
+import { Activity, AppWindow, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, CircleAlert, Copy, Cpu, FolderOpen, Gauge, Layers3, LoaderCircle, LogOut, Monitor, Moon, Radar, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, SquareTerminal, Sun, Undo2, X } from 'lucide-react';
 import '@fontsource-variable/inter';
 import '@fontsource/caveat/500.css';
 import type { DesktopRequest, DesktopState, ModelChange, ModelItem, Selection } from '../../src/desktop/contracts';
@@ -159,6 +159,7 @@ function App() {
       const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
       if ((event.key === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !typing)) { event.preventDefault(); setPage('launch'); requestAnimationFrame(() => searchRef.current?.focus()); }
       if (event.key === 'Escape') setConfirm(undefined);
+      if ((event.metaKey || event.ctrlKey) && ['1', '2', '3'].includes(event.key)) { event.preventDefault(); setPage((['launch', 'apps', 'settings'] as const)[Number(event.key) - 1]); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -186,11 +187,32 @@ function App() {
   const picked = find(selection.model);
   const claudeSelection = selections.claude;
   const claudeValid = !!find(claudeSelection.model)?.enabled && [claudeSelection.opus, claudeSelection.haiku, claudeSelection.fable, claudeSelection.sonnet46].filter(Boolean).every(ref => find(ref)?.enabled);
-  const codexValid = !!find(selections.codex.model)?.enabled;
+  const codexValid = [selections.codex.model, ...Object.values(selections.codex.names || {})].every(ref => !!find(ref)?.enabled);
   const valid = client === 'claude' ? claudeValid : codexValid;
   const mappingChanged = data?.savedRoutes.length !== 5 || data.savedRoutes.some(route => route.ref !== mappingRef(claudeSelection, route.slot) || route.effort !== claudeSelection.effort?.[route.slot]) || (data.preferences.selections.claude?.autoMode === true) !== (claudeSelection.autoMode === true);
   const codexRoute = data?.codexRoutes[0];
-  const codexChanged = !codexRoute || codexRoute.ref !== selections.codex.model || codexRoute.effort !== selections.codex.effort?.sonnet;
+  // Codex names (GPT-…) → backends, mirroring Claude's model names.
+  const codexNames = data?.codexNames || [];
+  const cx = selections.codex;
+  const codexPrimary = cx.primary && codexNames.some(n => n.slug === cx.primary) ? cx.primary : codexNames[0]?.slug;
+  const codexRef = (slug: string) => slug === codexPrimary ? cx.model : cx.names?.[slug] || cx.model;
+  const codexEffort = (slug: string) => slug === codexPrimary ? cx.effort?.sonnet : cx.nameEffort?.[slug] ?? (codexRef(slug) === cx.model ? cx.effort?.sonnet : undefined);
+  const pinnedFor = (ref: string, effort?: Effort) => effort && find(ref)?.efforts.includes(effort) ? effort : undefined;
+  const codexChanged = !codexRoute || codexRoute.id !== codexPrimary && !!codexRoute.displayName || codexNames.some(n => { const r = data?.codexRoutes.find(route => route.id === n.slug); return !r || r.ref !== codexRef(n.slug) || r.effort !== pinnedFor(codexRef(n.slug), codexEffort(n.slug)); });
+  const setCodexRef = (slug: string, ref: string) => setSelection(s => slug === codexPrimary
+    ? { ...s, model: ref, names: Object.fromEntries(Object.entries(s.names || {}).filter(([, r]) => r !== s.model)), effort: find(ref)?.efforts.includes(s.effort?.sonnet as Effort) ? s.effort : undefined }
+    : { ...s, names: { ...s.names, [slug]: ref }, nameEffort: Object.fromEntries(Object.entries(s.nameEffort || {}).filter(([k]) => k !== slug || find(ref)?.efforts.includes(s.nameEffort![k]))) }, 'codex');
+  const setCodexEffort = (slug: string, effort: Effort | '') => setSelection(s => {
+    if (slug === codexPrimary) return withEffort(s, 'sonnet', effort);
+    const next = { ...s.nameEffort }; if (effort) next[slug] = effort; else delete next[slug];
+    return { ...s, nameEffort: Object.keys(next).length ? next : undefined };
+  }, 'codex');
+  const makeCodexDefault = (slug: string) => setSelection(s => {
+    const old = codexPrimary!; const ref = codexRef(slug); const eff = codexEffort(slug);
+    const names = { ...s.names, [old]: s.model }; delete names[slug];
+    const nameEffort = { ...s.nameEffort }; delete nameEffort[slug]; if (s.effort?.sonnet) nameEffort[old] = s.effort.sonnet;
+    return { ...s, primary: slug, model: ref, names, nameEffort: Object.keys(nameEffort).length ? nameEffort : undefined, effort: eff ? { sonnet: eff } : undefined };
+  }, 'codex');
   const providers = useMemo(() => {
     const counts = new Map<string, { count: number; source: string }>();
     for (const m of models) if (!readyOnly || m.enabled) counts.set(m.provider, { count: (counts.get(m.provider)?.count || 0) + 1, source: m.source });
@@ -202,7 +224,7 @@ function App() {
   const readyCount = useCount(enabled.length);
   const changeSelection = (model: ModelItem) => {
     if (locked || !model.enabled) return;
-    if (client === 'codex') setSelection(s => ({ ...s, model: model.ref, effort: s.effort?.sonnet && model.efforts.includes(s.effort.sonnet) ? s.effort : undefined }));
+    if (client === 'codex') setSelection(s => ({ ...s, model: model.ref, names: Object.fromEntries(Object.entries(s.names || {}).filter(([, r]) => r !== s.model)), effort: s.effort?.sonnet && model.efforts.includes(s.effort.sonnet) ? s.effort : undefined }));
     else setSelection(s => normalizeSelection({ ...s, model: model.ref, effort: s.effort?.sonnet && model.efforts.includes(s.effort.sonnet) ? s.effort : withEffort(s, 'sonnet', '').effort, ...Object.fromEntries(auxiliarySlots.map(key => [key, !s[key] || s[key] === s.model ? model.ref : s[key]])) }));
     setError('');
   };
@@ -233,7 +255,7 @@ function App() {
         <div className={`gateway-pill ${data?.gateway.ready ? 'live' : ''}`}><span className="pulse" /><span>{data?.gateway.ready ? <>Gateway <b>:{data.gateway.port}</b></> : 'Gateway idle'}</span>{data?.gateway.ready && <span className="routed">{data.gateway.routed}</span>}</div>
         <Segmented size="sm" label="Appearance" value={theme} onChange={setTheme} options={[{ value: 'system', label: <Monitor size={13} />, title: 'Match system' }, { value: 'light', label: <Sun size={13} />, title: 'Light' }, { value: 'dark', label: <Moon size={13} />, title: 'Dark' }]} />
         <button className="quit" disabled={!!busy || !!data?.gateway.active} onClick={() => setConfirm({ title: 'Disconnect and quit Bridge?', body: 'Claude and Codex go back to their previous models, connected apps restart, and the gateway stops.', action: 'Disconnect & Quit', danger: true, run: () => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting') })}><LogOut size={14} /> Disconnect & Quit</button>
-        <span className="version">v{data?.version || '0.3.0'}</span>
+        {data?.update ? <button className="update-pill" onClick={() => request({ action: 'open-release' })}><Sparkles size={13} /> Update to v{data.update.version}</button> : <span className="version">v{data?.version || '0.4.0'}</span>}
       </div>
     </aside>
     <main>
@@ -293,7 +315,7 @@ function App() {
             </div>
           </div>
           <div className="pick" key={selection.model}>
-            <span className="eyebrow">{client === 'codex' ? 'Codex model' : 'Primary · Sonnet 5'}</span>
+            <span className="eyebrow">{client === 'codex' ? `Default · ${codexNames.find(n => n.slug === codexPrimary)?.label || 'Codex'}` : 'Primary · Sonnet 5'}</span>
             {picked ? <div className="selected-model"><ModelMark size="lg" provider={picked.provider} source={picked.source} id={picked.ref} name={picked.name} /><div><h3>{picked.name}</h3><p>{prettyProvider(picked.provider)}{picked.via === 'agent' ? ' · OpenCode agent' : ''}</p></div></div> : <div className="selected-model empty-pick"><h3>Choose a model</h3><p>Pick one from the library.</p></div>}
             {picked && <div className="facts"><span><Cpu size={12} />{picked.source !== 'opencode' ? 'On this Mac' : picked.via === 'agent' ? 'OpenCode tools' : `${appName} tools`}</span><span>{contextLabel(picked.context)} context</span>{picked.vision && <span>Vision</span>}{picked.free && <span className="hl-free">Free</span>}</div>}
             {picked?.enabled && <div className="effort-block"><span className="field-label"><Gauge size={13} /> Effort</span><EffortPicker model={picked} value={selection.effort?.sonnet} disabled={!!busy || locked} onChange={effort => setSelection(s => withEffort(s, 'sonnet', effort))} /></div>}
@@ -335,15 +357,21 @@ function App() {
           <footer className="integration-foot"><span>{data?.gateway.active ? 'Wait for the active request to finish before restarting.' : 'Changes stay here until you apply them. Restarting may interrupt tasks.'}</span><button className="link" disabled={!!busy || !claudeLocked} onClick={() => request({ action: 'disconnect', client: 'claude', restart: true }, 'Restoring Claude', 'Claude restored')}><Undo2 size={13} /> Disconnect</button></footer>
         </article>
         <article className="panel integration" aria-label="Codex model configuration">
-          <header className="integration-head"><span className="app-icon lg"><Mark name="codex" /></span><div><h2>Codex</h2><p>Works like <code>ollama launch codex</code>: a private <code>opencode-bridge</code> profile for the CLI, or a reversible pick for the Codex app.</p></div>
+          <header className="integration-head"><span className="app-icon lg"><Mark name="codex" /></span><div><h2>Codex</h2><p>Codex keeps its own model names. Choose what really answers each one — via a private <code>opencode-bridge</code> profile for the CLI, or a reversible pick for the Codex app.</p></div>
             <button className="primary compact" disabled={!!busy || !codexValid || !codex?.targets?.cli || !portValid} onClick={() => launchCodex('cli')}><SquareTerminal size={14} /> Launch CLI</button></header>
-          <div className="mappings"><div className="mapping">
-            <div className="mapping-name"><span className="claude-chip"><Mark name="codex" /></span><div><label htmlFor="codex-model">Model</label><span className={codexChanged ? 'state pending' : 'state ok'}>{codexChanged ? 'Next launch' : codex?.appConnected ? 'App connected' : 'Profile ready'}</span></div></div>
-            <ArrowRight size={16} className="mapping-arrow" aria-hidden="true" />
-            <div className="mapping-pick">{find(selections.codex.model) && <ModelMark provider={find(selections.codex.model)!.provider} source={find(selections.codex.model)!.source} id={selections.codex.model} name={find(selections.codex.model)!.name} />}<div className="select"><select id="codex-model" aria-label="Codex model" value={selections.codex.model} disabled={!!busy} onChange={event => { const value = event.target.value; setSelection(s => ({ ...s, model: value, effort: find(value)?.efforts.includes(s.effort?.sonnet as Effort) ? s.effort : undefined }), 'codex'); }}>{modelOptions(selections.codex.model)}</select><ChevronDown size={14} /></div></div>
-            <EffortPicker size="sm" model={find(selections.codex.model)} value={selections.codex.effort?.sonnet} disabled={!!busy} onChange={effort => setSelection(s => withEffort(s, 'sonnet', effort), 'codex')} />
-          </div></div>
-          <div className="targets"><span className={codex?.targets?.cli ? 'ok' : ''}><SquareTerminal size={14} /> CLI {codex?.targets?.cli ? 'found' : 'missing · npm i -g @openai/codex'}</span><span className={codex?.targets?.app ? 'ok' : ''}><AppWindow size={14} /> App {codex?.targets?.app ? 'found' : 'not installed'}</span><code>codex --profile opencode-bridge</code></div>
+          <div className="mappings">{codexNames.map((name, i) => {
+            const ref = codexRef(name.slug); const model = find(ref); const effort = codexEffort(name.slug);
+            const applied = data?.codexRoutes.find(r => r.id === name.slug);
+            const same = !!applied && applied.ref === ref && applied.effort === pinnedFor(ref, effort) && (name.slug !== codexPrimary || data?.codexRoutes[0]?.id === name.slug);
+            const isDefault = name.slug === codexPrimary;
+            return <div className="mapping" key={name.slug} style={vars({ '--i': i })}>
+              <div className="mapping-name"><span className="claude-chip"><Mark name="codex" /></span><div><label htmlFor={`codex-${name.slug}`}>{name.label}{isDefault && <span className="default-tag">Default</span>}</label>{isDefault ? <span className={same ? 'state ok' : 'state pending'}>{same ? codex?.appConnected ? 'App connected' : 'Profile ready' : 'Next launch'}</span> : <button className="make-default" disabled={!!busy} onClick={() => makeCodexDefault(name.slug)}>Make default</button>}</div></div>
+              <ArrowRight size={16} className="mapping-arrow" aria-hidden="true" />
+              <div className="mapping-pick">{model && <ModelMark provider={model.provider} source={model.source} id={ref} name={model.name} />}<div className="select"><select id={`codex-${name.slug}`} aria-label={`${name.label} model`} value={ref} disabled={!!busy} onChange={event => setCodexRef(name.slug, event.target.value)}>{modelOptions(ref)}</select><ChevronDown size={14} /></div></div>
+              <EffortPicker size="sm" model={model} value={effort} disabled={!!busy} onChange={value => setCodexEffort(name.slug, value)} />
+            </div>;
+          })}</div>
+          <div className="targets"><span className={codex?.targets?.cli ? 'ok' : ''}><SquareTerminal size={14} /> CLI {codex?.targets?.cli ? 'found' : 'missing · npm i -g @openai/codex'}</span><span className={codex?.targets?.app ? 'ok' : ''}><AppWindow size={14} /> App {codex?.targets?.app ? 'found' : 'not installed'}</span><button className="copy-cmd" title="Copy command" onClick={() => request({ action: 'copy-codex-command' }, '', 'Command copied')}><code>codex --profile opencode-bridge</code><Copy size={13} /></button></div>
           <footer className="integration-foot"><span>The Codex app option edits its selected model in ~/.codex/config.toml and restarts it. Disconnect restores it exactly.</span><div className="foot-actions"><button className="link" disabled={!!busy || !codexValid || !codex?.targets?.app} onClick={() => launchCodex('app')}><AppWindow size={13} /> Use in app</button><button className="link" disabled={!!busy || !(codex?.connected || codex?.recoveryNeeded)} onClick={() => request({ action: 'disconnect', client: 'codex', restart: true }, 'Restoring Codex', 'Codex restored')}><Undo2 size={13} /> Disconnect</button></div></footer>
         </article>
         {agentCount > 0 && <div className="callout"><Bot size={18} /><p><b>Free OpenCode models run inside OpenCode.</b> OpenCode allows its free tier only within OpenCode, so Bridge uses a private OpenCode agent for them. It runs OpenCode’s own tools under your Settings policy, and app-side tools like Claude Code’s aren’t used.</p></div>}

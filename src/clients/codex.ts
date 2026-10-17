@@ -36,7 +36,7 @@ async function readText(path: string): Promise<string | undefined> {
 }
 export function catalog(routes: Route[], names: Record<string, string> = {}): Wire {
   return { models: routes.map(route => ({
-    slug: route.id, display_name: names[route.ref] || route.label.split(' · ')[0] || route.ref, description: `${route.label} via OpenCode Bridge`,
+    slug: route.id, display_name: route.displayName || names[route.ref] || route.label.split(' · ')[0] || route.ref, description: route.displayName ? `Answered by ${route.label.split(' · ')[0]} via OpenCode Bridge` : `${route.label} via OpenCode Bridge`,
     context_window: route.contextTokens, max_context_window: route.contextTokens, effective_context_window_percent: 95,
     shell_type: 'default', visibility: 'list', supported_in_api: true, priority: 0,
     truncation_policy: { mode: 'tokens', limit: 10000 }, input_modalities: route.vision ? ['text', 'image'] : ['text'],

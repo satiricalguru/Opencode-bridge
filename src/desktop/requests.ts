@@ -1,13 +1,18 @@
 import { isObject } from '../types.js';
 import { EFFORTS } from '../effort.js';
+import { validCodexSlug } from '../clients/codex-names.js';
 import type { DesktopRequest, Selection } from './contracts.js';
 
 function selection(value: unknown): Selection {
-  if (!isObject(value) || Object.keys(value).some(k => !['model', 'opus', 'haiku', 'fable', 'sonnet46', 'autoMode', 'effort'].includes(k)) || typeof value.model !== 'string' || !value.model || value.model.length > 512) throw new Error('Invalid model selection.');
+  if (!isObject(value) || Object.keys(value).some(k => !['model', 'opus', 'haiku', 'fable', 'sonnet46', 'autoMode', 'effort', 'primary', 'names', 'nameEffort'].includes(k)) || typeof value.model !== 'string' || !value.model || value.model.length > 512) throw new Error('Invalid model selection.');
   if (value.effort !== undefined && (!isObject(value.effort) || Object.entries(value.effort).some(([slot, level]) => !['sonnet', 'opus', 'haiku', 'fable', 'sonnet46'].includes(slot) || !EFFORTS.includes(level as any)))) throw new Error('Invalid effort selection.');
   for (const key of ['opus', 'haiku', 'fable', 'sonnet46']) if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 512)) throw new Error('Invalid auxiliary model selection.');
   if (value.autoMode !== undefined && typeof value.autoMode !== 'boolean') throw new Error('Auto mode preference must be boolean.');
-  return { model: value.model, ...Object.fromEntries(['opus', 'haiku', 'fable', 'sonnet46'].filter(key => value[key]).map(key => [key, value[key]])), ...(value.autoMode !== undefined ? { autoMode: value.autoMode } : {}), ...(value.effort && Object.keys(value.effort).length ? { effort: { ...value.effort } } : {}) };
+  if (value.primary !== undefined && !validCodexSlug(value.primary)) throw new Error('Invalid Codex model name.');
+  if (value.names !== undefined && (!isObject(value.names) || Object.keys(value.names).length > 16 || Object.entries(value.names).some(([slug, ref]) => !validCodexSlug(slug) || typeof ref !== 'string' || !ref || ref.length > 512))) throw new Error('Invalid Codex model mapping.');
+  if (value.nameEffort !== undefined && (!isObject(value.nameEffort) || Object.entries(value.nameEffort).some(([slug, level]) => !validCodexSlug(slug) || !EFFORTS.includes(level as any)))) throw new Error('Invalid Codex effort selection.');
+  const codex = { ...(value.primary ? { primary: value.primary } : {}), ...(value.names && Object.keys(value.names).length ? { names: { ...value.names } } : {}), ...(value.nameEffort && Object.keys(value.nameEffort).length ? { nameEffort: { ...value.nameEffort } } : {}) };
+  return { ...codex, model: value.model, ...Object.fromEntries(['opus', 'haiku', 'fable', 'sonnet46'].filter(key => value[key]).map(key => [key, value[key]])), ...(value.autoMode !== undefined ? { autoMode: value.autoMode } : {}), ...(value.effort && Object.keys(value.effort).length ? { effort: { ...value.effort } } : {}) };
 }
 export function parseDesktopRequest(value: unknown): DesktopRequest {
   if (!isObject(value) || typeof value.action !== 'string') throw new Error('Invalid app request.');
@@ -20,7 +25,7 @@ export function parseDesktopRequest(value: unknown): DesktopRequest {
     if (Object.keys(value).length !== 2 || !['system', 'light', 'dark'].includes(value.theme)) throw new Error('Invalid theme.');
     return { action: 'theme', theme: value.theme };
   }
-  if (['state', 'refresh', 'stop', 'open-state'].includes(value.action)) {
+  if (['state', 'refresh', 'stop', 'open-state', 'open-release', 'copy-codex-command'].includes(value.action)) {
     if (Object.keys(value).length !== 1) throw new Error('Unexpected app request fields.');
     return { action: value.action } as DesktopRequest;
   }

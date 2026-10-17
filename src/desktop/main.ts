@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, shell, Tray } from 'electron';
 import { mkdir } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -26,6 +26,18 @@ let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
 let requestingQuit = false;
+const RELEASES = 'https://github.com/satiricalguru/Opencode-bridge/releases/latest';
+// Compares dotted versions numerically (0.10.0 > 0.9.9).
+const newer = (a: string, b: string) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+async function checkForUpdate(): Promise<void> {
+  try {
+    const response = await net.fetch('https://api.github.com/repos/satiricalguru/Opencode-bridge/releases/latest', { headers: { accept: 'application/vnd.github+json' } });
+    if (!response.ok) return;
+    const release = await response.json() as { tag_name?: string; html_url?: string };
+    const version = String(release.tag_name || '').replace(/^v/, '');
+    if (/^\d+\.\d+\.\d+$/.test(version) && newer(version, app.getVersion()) && release.html_url?.startsWith('https://github.com/satiricalguru/Opencode-bridge/releases/')) service.update = { version, url: release.html_url };
+  } catch { /* Offline: try again later. */ }
+}
 const appIconPath = () => join(root, 'assets', 'icon.png');
 const show = () => { if (window) { window.show(); window.focus(); } };
 const finishQuit = () => { quitting = true; app.quit(); };
@@ -95,6 +107,9 @@ else {
         case 'launch': state = await service.launch(request.client, request.selection, request.port, request.restart, { target: request.target }); break;
         case 'settings': state = await service.settings(request.agent); break;
         case 'theme': nativeTheme.themeSource = request.theme; state = await service.state(); break;
+        // Fixed destinations only; the renderer never supplies a URL or text.
+        case 'open-release': await shell.openExternal(service.update?.url || RELEASES); state = await service.state(); break;
+        case 'copy-codex-command': clipboard.writeText('codex --profile opencode-bridge'); state = await service.state(); break;
         case 'apply': state = await service.apply(request.client, request.selection, request.port, request.restart); break;
         case 'disconnect': state = await service.disconnect(request.client, request.restart); break;
         case 'disconnect-quit': await disconnectAll(); state = await service.state(); setImmediate(finishQuit); break;
@@ -125,6 +140,7 @@ else {
   await window.loadURL('bridge://app/index.html');
   show();
   const slim = (m: { ref: string; name: string; provider: string; source: string }) => ({ ref: m.ref, name: m.name, provider: m.provider, source: m.source });
+  void checkForUpdate(); setInterval(() => { void checkForUpdate(); }, 6 * 3_600_000).unref();
   await service.watch(change => {
     if (window && !window.isDestroyed()) window.webContents.send('desktop:changed', { state: change.state, added: change.added.map(slim), removed: change.removed.map(slim) });
   });

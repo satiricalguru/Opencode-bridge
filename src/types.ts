@@ -28,6 +28,8 @@ export interface Route {
   effort?: EffortCapability;
   // User-pinned effort. Overrides the level requested by the client.
   effortOverride?: Effort;
+  // Codex: the model name Codex shows for this route (its own name, e.g. GPT-5.5).
+  displayName?: string;
 }
 export interface OpenCodeAgentSettings { workspace: string; permission: AgentPermission }
 export interface BridgeConfig {

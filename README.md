@@ -10,8 +10,8 @@ Run **free OpenCode Zen models**, **Ollama**, **LM Studio**, **OpenRouter**, **N
 
 <p>
   <a href="#-quick-start"><img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#-testing"><img alt="Tests" src="https://img.shields.io/badge/tests-65%20passing-2fbf85?style=for-the-badge" /></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.3.0-2b7fff?style=for-the-badge" />
+  <a href="#-testing"><img alt="Tests" src="https://img.shields.io/badge/tests-67%20passing-2fbf85?style=for-the-badge" /></a>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.0-2b7fff?style=for-the-badge" />
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-8b5cf6?style=for-the-badge" /></a>
 </p>
 
@@ -47,7 +47,7 @@ Claude Desktop and Codex are great front-ends, but they only talk to their own c
 | --- | --- |
 | 🆓 **Free models, for real** | OpenCode Zen's free tier (Big Pickle, DeepSeek V4.1 Flash Free, GLM-5.3 Flash Free, Nemotron…) only works *inside OpenCode*. Bridge runs them in a private OpenCode agent, which is the supported way, with no API key and no tricks. |
 | 🎭 **Claude names, your models** | Claude shows **Sonnet 5, Opus 5, Haiku 4.5, Fable 5 and Sonnet 4.6**. You decide what really answers each one. |
-| 🧩 **Codex too** | One click opens `codex --profile opencode-bridge`, or switches the Codex app to your model. Undo is exact. |
+| 🧩 **Codex names, your models** | Codex keeps showing its own models (GPT-6-Luna, GPT-5.6-Terra…). Each one is answered by the backend you choose, via `codex --profile opencode-bridge` or the Codex app. Undo is exact. |
 | 🎚️ **Effort you control** | Pin Low → Max per model, or let the app decide. Requests snap to the levels a model actually supports. |
 | 🔄 **Live model library** | `ollama pull`, an LM Studio download or a new OpenCode provider shows up within seconds, with no refresh. |
 | 🛡️ **Safe by design** | Loopback-only gateway, journaled config edits, one-click restore. Your keys stay in OpenCode. |
@@ -148,6 +148,23 @@ Direct routes (API-key providers, Ollama, LM Studio, OpenRouter) keep **Claude C
   <source media="(prefers-color-scheme: light)" srcset="docs/media/codex-light.png" />
   <img src="docs/media/codex-dark.png" alt="The launcher switched to Codex with Launch Codex CLI and Use in Codex app buttons" width="100%" />
 </picture>
+
+### Codex names, your models
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/media/codex-names-light.png" />
+  <img src="docs/media/codex-names-dark.png" alt="Each Codex model name mapped to a different backend with its own effort" width="100%" />
+</picture>
+
+Just like Claude, **Codex keeps its own model names**. Bridge reads them from your Codex install (`~/.codex/models_cache.json`) and lets you choose what answers each one:
+
+| Codex shows | Answered by (example) | Effort |
+| --- | --- | --- |
+| GPT-6-Luna *(default)* | DeepSeek V4.1 Flash Free · *OpenCode agent* | High |
+| GPT-5.6-Terra | Nemotron 3 Super · *OpenRouter, free* | Auto |
+| GPT-5.6-Luna | qwen3.6 · *Ollama, on your Mac* | Auto |
+
+Switch models in Codex as usual (`/model`, `-m gpt-5.6-terra`, or the app's picker), and the matching backend answers. Verified live: `gpt-6-luna` → DeepSeek Free, `gpt-5.6-terra` → Nemotron.
 
 Bridge serves the **OpenAI Responses API** (`/v1/responses`), which is what Codex speaks, and translates it onto every model route. Like `ollama launch codex`, it offers two modes:
 
@@ -288,7 +305,7 @@ npm run check && npm run check:ui
 
 | Suite | What it proves | Result |
 | --- | --- | --- |
-| `npm test` (65 tests) | Anthropic and Chat translation, streaming, parallel tool calls, Responses ⇄ Messages, the agent engine against a fake OpenCode server, effort resolution, Claude and Codex config edits and exact restore, Claude+Codex orchestration, LM Studio discovery, watcher, IPC validation | ✅ 65 / 65 |
+| `npm test` (67 tests) | Anthropic and Chat translation, streaming, parallel tool calls, Responses ⇄ Messages, the agent engine against a fake OpenCode server, effort resolution, Claude and Codex config edits and exact restore, Claude+Codex orchestration, LM Studio discovery, watcher, IPC validation | ✅ 67 / 67 |
 | `npm run smoke:launcher` | Real background gateway: start, reuse, inference, status, stop | ✅ |
 | `npm run smoke -- <free model>` | Live client-tool round trip on a direct route (OpenRouter free) | ✅ |
 | `npm run smoke:agent -- opencode/big-pickle` | Live free Zen model via the OpenCode agent: file read, streaming, follow-up | ✅ DeepSeek Free, Big Pickle |
@@ -387,6 +404,8 @@ Change it under **Settings → Gateway port** (disconnect Claude first), or run 
 - [x] Per-model effort levels
 - [x] LM Studio, plus live model discovery
 - [x] Light and dark premium UI
+- [x] Codex model names → your models
+- [x] In-app update notice
 - [ ] Signed and notarized release builds
 - [ ] Launch at login, with gateway auto-restart
 - [ ] More apps as they open up to custom models

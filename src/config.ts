@@ -15,6 +15,7 @@ function validateRoute(route: unknown, ids: Set<string>, codex: boolean): void {
   const mode = route.protocol === 'anthropic' ? 'native' : route.protocol;
   if (route.effort && (!isObject(route.effort) || route.effort.mode !== mode || !Array.isArray(route.effort.levels) || !route.effort.levels.length || route.effort.levels.some((level: any) => !EFFORTS.includes(level)) || new Set(route.effort.levels).size !== route.effort.levels.length)) throw new Error('Invalid route effort capability.');
   if (route.effortOverride !== undefined && !EFFORTS.includes(route.effortOverride)) throw new Error('Invalid route effort override.');
+  if (route.displayName !== undefined && (typeof route.displayName !== 'string' || !route.displayName || route.displayName.length > 64)) throw new Error('Invalid route display name.');
   if (route.protocol === 'opencode') {
     // Inference is performed by the bridge-owned OpenCode server, never a stored endpoint.
     if (route.baseURL !== OPENCODE_AGENT_URL || !/^[^/\s]+\/\S+$/.test(route.ref)) throw new Error('Invalid OpenCode agent route.');
@@ -47,6 +48,6 @@ export async function initialize(routes: Route[], port = 41415, directory = stat
 export function publicConfig(config: BridgeConfig) {
   return { version: config.version, port: config.port, routes: config.routes.map(publicRoute), codexRoutes: (config.codexRoutes || []).map(publicRoute) };
 }
-function publicRoute({ id, tier, ref, label, protocol, contextTokens, maxOutputTokens, tools, vision, effortOverride }: Route) {
-  return { id, tier, ref, label, protocol, contextTokens, maxOutputTokens, tools, vision, ...(effortOverride ? { effortOverride } : {}) };
+function publicRoute({ id, tier, ref, label, protocol, contextTokens, maxOutputTokens, tools, vision, effortOverride, displayName }: Route) {
+  return { id, tier, ref, label, protocol, contextTokens, maxOutputTokens, tools, vision, ...(effortOverride ? { effortOverride } : {}), ...(displayName ? { displayName } : {}) };
 }

@@ -83,3 +83,18 @@ test('a Codex app connection created from no config file removes the file on dis
   await f.client.disconnect(false);
   await assert.rejects(() => stat(join(f.home, 'config.toml')));
 });
+test('Codex names come from Codex\'s own cache in priority order, and the catalog shows them', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'bridge-codex-names-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const { readCodexNames, DEFAULT_CODEX_NAMES } = await import('../src/clients/codex-names.js');
+  assert.deepEqual(await readCodexNames(dir), DEFAULT_CODEX_NAMES);
+  await writeFile(join(dir, 'models_cache.json'), JSON.stringify({ models: [
+    { slug: 'gpt-6-luna', display_name: 'GPT-6-Luna', visibility: 'list', priority: 4 },
+    { slug: 'codex-auto-review', display_name: 'Auto Review', visibility: 'hide', priority: 1 },
+    { slug: 'gpt-5.6-terra', display_name: 'GPT-5.6-Terra', visibility: 'list', priority: 2 },
+    { slug: '../evil', display_name: 'x', visibility: 'list', priority: 0 },
+  ] }));
+  assert.deepEqual(await readCodexNames(dir), [{ slug: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' }, { slug: 'gpt-6-luna', label: 'GPT-6-Luna' }]);
+  const cfg = codexConfig(); cfg.codexRoutes = [{ ...cfg.codexRoutes![0], id: 'gpt-5.6-terra', displayName: 'GPT-5.6-Terra' }];
+  const entry = catalog(cfg.codexRoutes).models[0];
+  assert.equal(entry.slug, 'gpt-5.6-terra'); assert.equal(entry.display_name, 'GPT-5.6-Terra'); assert.match(entry.description, /Answered by/);
+});

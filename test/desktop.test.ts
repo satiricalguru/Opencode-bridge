@@ -156,7 +156,8 @@ test('Codex and Claude share one gateway: each keeps its routes and disconnectin
     disconnect: async () => { calls.push(`${id}:disconnect`); connected[id] = false; if (id === 'claude') await unlink(journalPath(dir)).catch(() => {}); return true; },
   });
   const gateway = { start: async () => { calls.push('start'); }, stop: async () => { calls.push('stop'); return true; } };
-  const service = new DesktopService(new ClientRegistry([fake('claude'), fake('codex')]), gateway, dir, async () => catalog, async () => ({ active: 0, routed: 0 }));
+  const names = [{ slug: 'gpt-6-luna', label: 'GPT-6-Luna' }, { slug: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' }];
+  const service = new DesktopService(new ClientRegistry([fake('claude'), fake('codex')]), gateway, dir, async () => catalog, async () => ({ active: 0, routed: 0 }), async () => {}, async () => names);
   await service.refresh();
   await service.launch('claude', { model: 'bridge-test/a', effort: { opus: 'high', haiku: 'max' as any } }, 65501, false);
   const claudeConfig = await loadConfig(dir);
@@ -166,11 +167,17 @@ test('Codex and Claude share one gateway: each keeps its routes and disconnectin
   await service.launch('codex', { model: 'bridge-test/b', effort: { sonnet: 'low' } }, 65501, false, { target: 'app' });
   const both = await loadConfig(dir);
   assert.deepEqual(both.routes, claudeConfig.routes); assert.equal(both.token, claudeConfig.token);
-  assert.deepEqual(both.codexRoutes?.map(r => [r.id, r.ref, r.effortOverride, r.slot]), [['bridge-test/b', 'bridge-test/b', 'low', undefined]]);
+  assert.deepEqual(both.codexRoutes?.map(r => [r.id, r.displayName, r.ref, r.effortOverride, r.slot]), [['gpt-6-luna', 'GPT-6-Luna', 'bridge-test/b', 'low', undefined], ['gpt-5.6-terra', 'GPT-5.6-Terra', 'bridge-test/b', 'low', undefined]]);
+  // Codex names map independently, and the chosen default comes first (Codex's selected model).
+  await service.launch('codex', { model: 'bridge-test/a', primary: 'gpt-5.6-terra', names: { 'gpt-6-luna': 'bridge-test/b' }, nameEffort: { 'gpt-6-luna': 'high' } }, 65501, false, { target: 'cli' });
+  const mapped = await loadConfig(dir);
+  assert.deepEqual(mapped.codexRoutes?.map(r => [r.id, r.ref, r.effortOverride]), [['gpt-5.6-terra', 'bridge-test/a', undefined], ['gpt-6-luna', 'bridge-test/b', 'high']]);
+  assert.deepEqual((await service.state()).preferences.selections.codex, { model: 'bridge-test/a', primary: 'gpt-5.6-terra', names: { 'gpt-6-luna': 'bridge-test/b' }, nameEffort: { 'gpt-6-luna': 'high' } });
+  assert.deepEqual((await service.state()).codexNames.map(n => n.slug), ['gpt-6-luna', 'gpt-5.6-terra']);
   await assert.rejects(() => service.launch('codex', { model: 'bridge-test/b' }, 65502, false), /gateway port/);
   const state = await service.state();
-  assert.equal(state.preferences.selections.codex.model, 'bridge-test/b');
-  assert.equal(state.codexRoutes[0].effort, 'low');
+  assert.equal(state.preferences.selections.codex.model, 'bridge-test/a');
+  assert.equal(state.codexRoutes[0].effort, undefined);
   calls.length = 0;
   await service.disconnect('claude', false);
   assert.deepEqual(calls, ['claude:disconnect']);
@@ -208,4 +215,10 @@ test('model changes refresh the catalog, reuse OpenCode inventory for local chan
   refs = ['ollama-local/b'];
   const removal = await service.refreshFor(['opencode']);
   assert.deepEqual(removal.removed.map(m => m.ref), ['ollama-local/a']); assert.equal(reuses.at(-1), undefined);
+});
+test('IPC accepts Codex name mappings and rejects unsafe names or values', () => {
+  assert.deepEqual(parseDesktopRequest({ action: 'save', client: 'codex', selection: { model: 'a/b', primary: 'gpt-6-luna', names: { 'gpt-5.6-terra': 'c/d' }, nameEffort: { 'gpt-5.6-terra': 'max' } }, port: 41415 }).selection, { primary: 'gpt-6-luna', names: { 'gpt-5.6-terra': 'c/d' }, nameEffort: { 'gpt-5.6-terra': 'max' }, model: 'a/b' });
+  for (const selection of [{ model: 'a/b', primary: '../x' }, { model: 'a/b', names: { 'gpt x': 'c/d' } }, { model: 'a/b', names: { ok: 5 } }, { model: 'a/b', nameEffort: { ok: 'turbo' } }]) assert.throws(() => parseDesktopRequest({ action: 'save', client: 'codex', selection, port: 41415 }));
+  assert.deepEqual(parseDesktopRequest({ action: 'copy-codex-command' }), { action: 'copy-codex-command' });
+  assert.throws(() => parseDesktopRequest({ action: 'open-release', url: 'https://evil' }));
 });

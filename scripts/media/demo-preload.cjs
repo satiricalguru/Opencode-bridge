@@ -20,17 +20,18 @@ let models = [
   m('openrouter/qwen/qwen3.6-coder', 'Qwen3.6 Coder', 'openrouter', { context: 262144 }),
   m('openrouter/mistralai/devstral-3', 'Devstral 3', 'openrouter', { context: 262144 }),
 ];
-const selections = { claude: { model: 'opencode/deepseek-v4.1-flash-free', opus: 'opencode/claude-sonnet-5', haiku: 'ollama-local/qwen3.6', fable: 'nvidia/moonshotai/kimi-k3', effort: { sonnet: 'high', opus: 'max' } }, codex: { model: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free' } };
+const selections = { claude: { model: 'opencode/deepseek-v4.1-flash-free', opus: 'opencode/claude-sonnet-5', haiku: 'ollama-local/qwen3.6', fable: 'nvidia/moonshotai/kimi-k3', effort: { sonnet: 'high', opus: 'max' } }, codex: { model: 'opencode/deepseek-v4.1-flash-free', names: { 'gpt-5.6-terra': 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', 'gpt-5.6-luna': 'ollama-local/qwen3.6' }, effort: { sonnet: 'high' } } };
+const codexNames = [{ slug: 'gpt-6-luna', label: 'GPT-6-Luna' }, { slug: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' }, { slug: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' }];
 const state = () => ({
-  version: '0.3.0', models, notices: [],
+  version: '0.4.0', models, notices: [], codexNames,
   preferences: { version: 1, selectedClient: 'claude', port: 41415, agent: { workspace: '/Users/you/OpenCode Bridge', permission: 'read-only' }, selections },
   clients: [
     { id: 'claude', name: 'Claude Desktop', description: 'Chat, Code & Cowork', availability: 'available', protocol: 'anthropic-messages', status: { installed: true, running: true, connected: false, recoveryNeeded: false } },
     { id: 'codex', name: 'Codex', description: 'Codex CLI & app', availability: 'available', protocol: 'openai-responses', status: { installed: true, running: false, connected: true, recoveryNeeded: false, targets: { cli: true, app: true }, appConnected: false } },
   ],
   gateway: { ready: true, active: 0, routed: 128, port: 41415 },
-  savedRoutes: [['sonnet', 'opencode/deepseek-v4.1-flash-free', 'high'], ['opus', 'opencode/claude-sonnet-5', 'max'], ['haiku', 'ollama-local/qwen3.6'], ['fable', 'nvidia/moonshotai/kimi-k3'], ['sonnet46', 'opencode/deepseek-v4.1-flash-free']].map(([slot, ref, effort]) => ({ tier: slot === 'sonnet46' ? 'sonnet' : slot, slot, ref, label: ref, protocol: 'chat', ...(effort ? { effort } : {}) })),
-  codexRoutes: [{ tier: 'sonnet', slot: 'sonnet', ref: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', label: 'x', protocol: 'chat' }],
+  savedRoutes: [['sonnet', 'opencode/deepseek-v4.1-flash-free', 'high'], ['opus', 'opencode/claude-sonnet-5', 'max'], ['haiku', 'ollama-local/qwen3.6'], ['fable', 'nvidia/moonshotai/kimi-k3'], ['sonnet46', 'opencode/deepseek-v4.1-flash-free']].map(([slot, ref, effort]) => ({ id: slot, tier: slot === 'sonnet46' ? 'sonnet' : slot, slot, ref, label: ref, protocol: 'chat', ...(effort ? { effort } : {}) })),
+  codexRoutes: [['gpt-6-luna', 'GPT-6-Luna', 'opencode/deepseek-v4.1-flash-free', 'high'], ['gpt-5.6-terra', 'GPT-5.6-Terra', 'openrouter/nvidia/nemotron-3-super-120b-a12b:free'], ['gpt-5.6-luna', 'GPT-5.6-Luna', 'ollama-local/qwen3.6']].map(([id, displayName, ref, effort]) => ({ id, displayName, tier: 'sonnet', slot: 'sonnet', ref, label: ref, protocol: 'chat', ...(effort ? { effort } : {}) })),
 });
 let listener;
 contextBridge.exposeInMainWorld('desktop', {

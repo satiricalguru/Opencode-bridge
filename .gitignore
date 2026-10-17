@@ -10,3 +10,4 @@ release-verified/
 coverage/
 website/media/
 .claude/
+.vercel

@@ -2,6 +2,12 @@
 
 Updated 17 October 2026: `opencode-claude-bridge` 0.2.0. See [VERIFICATION.md](VERIFICATION.md) for live results.
 
+## 0.4.0
+
+- **Codex names, your models.** Mirrors the Claude feature: Bridge reads Codex's own visible model names from `models_cache.json` (falling back to a default list), maps each to a backend with its own pinned effort, and writes them into the Codex catalog. Codex's picker shows its usual names while your models answer. You can choose the default name with **Make default**, and launchpad picks move the names that follow the default. Verified live with Codex CLI 0.153.4: `gpt-6-luna` → DeepSeek V4.1 Flash Free (agent), `gpt-5.6-terra` → Nemotron 3 Super (OpenRouter).
+- **Minor improvements.** An update notice in the sidebar (a GitHub release check every 6 h in the main process, which opens the release page). A copy button for `codex --profile opencode-bridge` (clipboard via the main process). <kbd>⌘1</kbd>–<kbd>⌘3</kbd> switch pages.
+- `npm test`: 67 passed.
+
 ## 0.3.0
 
 - **Final audit fixes.** Background polls no longer swallow clicks. Restarts and quit now ask for confirmation. Arrow keys, Home and End move through the model list, and ⌘K or `/` focuses search. Errors also appear as toasts. Status dots have readable labels, and decorative logos are hidden from screen readers. The "Connected" label has its own background so it stays readable over the launcher glow. There is a new night-sky app icon, also used as the Dock icon in dev (`npm run app`) and in the About panel.
