@@ -1,5 +1,48 @@
 # Model mapping and free-route verification
 
+## 17 October 2026 — v0.3.0: redesign, LM Studio, live model updates
+
+- Real watcher + real Ollama 0.35.1: `ollama pull gemma4:31b-cloud` was detected and listed about 4 s later; `ollama rm` was reflected about 2 s later. Ollama was left with its original empty model list.
+- LM Studio 0.4.24: with its server started, `POST /v1/messages` returned an Anthropic-format error ("No models loaded"), confirming the Messages endpoint; `/api/v1/models` lists capabilities. This machine has only an RVC voice model and an embedding model, so no LM Studio chat inference was run. Load and start behaviour is covered by fixture tests. The server was stopped afterwards.
+- The UI was inspected in light and dark themes against a mocked bridge. The Electron app booted from source and quit cleanly. macOS screen recording isn't permitted for the verifying shell, so the native window itself (vibrancy) was not screenshotted.
+
+## 17 October 2026 — v0.2.0: OpenCode free models, Codex, effort control
+
+Checked on this macOS installation with OpenCode CLI 1.18.34, Codex CLI 0.153.4 and the Codex app (`com.openai.codex`).
+
+### Why the free models previously failed, and what changed
+
+OpenCode Zen's free tier answers non-OpenCode clients with HTTP 403 `FreeTierError` ("can only be used from within OpenCode"). That is still true for direct API calls, with or without an API key. Probing the genuine `opencode serve` API showed that the restriction also applies when OpenCode's own tools are disabled or denied for a session. It passes only for OpenCode's real agent with its tool set. The bridge does **not** imitate OpenCode's client identity. Instead, v0.2.0 runs these models inside a bridge-owned, password-protected `opencode serve` session (the `opencode` route protocol):
+
+- Claude Desktop or Codex → gateway → OpenCode session (`prompt_async` + `/event` stream) → the model.
+- OpenCode runs the model with its own tools. Its permission prompts are answered by the bridge policy: **read-only** by default, with optional **edit & run commands** or **full access**. Interactive questions and doom-loop prompts are always declined.
+- Text deltas stream back as Anthropic events; each OpenCode tool use appears as a short `> ⚙︎ tool · title` note. Follow-up turns resume the same OpenCode session (keyed by a hash of the visible transcript), so history is not resent.
+- The working directory follows Claude Code's `Working directory:` line or Codex's `<cwd>`, otherwise the configured workspace (default `~/OpenCode Bridge`).
+- Effort maps to the model's OpenCode `variant`.
+
+Trade-off: with agent routes the *app's* client tools (Claude Code's Bash/Edit, Codex's shell/apply_patch) are not executed; OpenCode's are. Direct routes (API-key providers, Ollama, OpenRouter) keep full client-side tool round trips.
+
+### Live results
+
+| Check | Result |
+| --- | --- |
+| Direct Zen free API call (key and no key) | HTTP 403 `FreeTierError` (expected; not used) |
+| `opencode serve` session with OpenCode tools disabled/denied | HTTP 403 (so tools must stay enabled) |
+| Engine alone, `deepseek-v4.1-flash-free` | Read a file, read-only policy declined a write, resumed session answered turn 2 from memory |
+| Anthropic SDK → gateway, four Claude slots on four free models (Claude Code-shaped request, tools + adaptive thinking + effort) | All correct: DeepSeek V4.1 Flash Free 10 s, Big Pickle 11 s, GLM-5.3 Flash Free 44 s, Nemotron 3.5 Lightning Free 139 s |
+| `npm run smoke:agent` (DeepSeek Free, Big Pickle), run twice | 4/4 passed: file read via OpenCode, streamed answer, resumed follow-up |
+| Codex CLI `codex --profile opencode-bridge exec` → OpenCode agent (DeepSeek Free) | Correct answer in about 9 s; OpenCode used Codex's working directory |
+| Codex CLI → direct OpenRouter free model (Nemotron 3 Super) | Codex executed its own shell tool twice through Responses↔Messages translation; correct final answer over 3 turns |
+| `npm run smoke` (client-tool round trip, OpenRouter free, direct) | Passed |
+| NVIDIA DeepSeek V4.1 Flash via Codex | Not completed: NVIDIA's API itself did not answer (a direct `curl` also timed out), so this was an upstream outage |
+| Catalog on this machine | 594 discovered, 471 ready (up from 119), including 12 OpenCode Zen free models through the agent |
+
+Not exercised live, to avoid disrupting active apps: switching the real Claude Desktop profile, which would restart the Claude app hosting the verifying session, and connecting the real Codex app's root `config.toml`. Both paths are covered by isolated tests with temporary config trees. The Codex app connection is a journaled, text-preserving edit that restores the user's original lines exactly.
+
+---
+
+## 18 September 2026 — v0.1.0
+
 Checked 18 September 2026 on this macOS installation. Availability is separated from catalog visibility and fixture protocol coverage.
 
 ## Claude names and routing

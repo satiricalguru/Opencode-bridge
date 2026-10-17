@@ -40,7 +40,7 @@
 
 ## 🌟 Overview
 
-**Verification status (18 September 2026):** Applications → Claude now provides independent Fable 5, Opus 5, Sonnet 5, Haiku 4.5, and Sonnet 4.6 selectors, an Apply & Restart button, and an Auto mode setting (off by default). The installed app applied the five-slot profile and Claude displayed all five entries, preserving the selected backend and effort. Full Quit now offers Disconnect & Quit, Keep Connected & Quit, or Cancel; closing the window hides Bridge in the menu bar. Actual local Desktop chat previously completed on retry, though cold latency remains a limitation. The main goal of OpenCode Zen free models remains blocked by HTTP 403, including Big Pickle through the genuine OpenCode CLI. See [VERIFICATION.md](VERIFICATION.md) for exact checks and limits. The local application build is unsigned and not notarized.
+**What's new in 0.2.0 (17 October 2026):** **free OpenCode Zen models** now work in Claude Desktop and Codex. They run inside a private OpenCode agent because OpenCode allows its free tier only within OpenCode. 0.2.0 also adds **Codex support** like `ollama launch codex` (CLI profile and Codex app) and a **per-model effort level** you can pin. Claude still shows its own model names (Sonnet 5, Opus 5, Haiku 4.5, Fable 5, Sonnet 4.6) while your chosen model answers. See [VERIFICATION.md](VERIFICATION.md) for live results and limits. The local application build is unsigned and not notarized.
 
 **OpenCode Bridge** empowers developers to unlock the full potential of **Claude Desktop** by routing inference requests through a resilient local gateway. Connect any model from your configured **OpenCode connections** or your locally running **Ollama** server, and interact using Claude Desktop's signature interface, keyboard shortcuts, and client tools.
 
@@ -63,6 +63,12 @@ Claude Desktop sends standard Anthropic Messages API requests directly to the br
 | **🔒 Air-Gapped Security** | Bound exclusively to `127.0.0.1`. Renderer has zero credential access; sensitive keys never leave the secure process boundary. |
 | **💾 Atomic Recovery Journal** | Automatic backup and restore of Claude Desktop profiles. Restores pristine original state on disconnect. |
 | **🛠️ Rich CLI Interface** | Complete terminal client for headless workflows, background daemons, and scripting. |
+| **🆓 Free OpenCode Zen Models** | Big Pickle, DeepSeek V4.1 Flash Free, GLM-5.3 Flash Free, Nemotron and more run through a bridge-owned OpenCode agent, with a read-only, edit, or full-access tool policy. |
+| **🧩 Codex Support** | `/v1/responses` endpoint plus an `opencode-bridge` Codex profile (`codex --profile opencode-bridge`) or a reversible Codex app selection, like `ollama launch codex`. |
+| **🎨 Premium Light & Dark UI** | Atmospheric glass design with system/light/dark themes, smooth motion, and real provider logos (Ollama, LM Studio, OpenCode, NVIDIA, OpenRouter…). |
+| **🔄 Live Model Discovery** | Pull a model in Ollama, download one in LM Studio, or add a provider in OpenCode — it appears within seconds, no refresh needed. |
+| **🖥️ LM Studio** | Downloaded LM Studio models run through its Anthropic-compatible endpoint; Bridge starts its server and loads the model on launch. |
+| **🎚️ Effort Levels** | Pin Low through Max per Claude slot or for Codex; unsupported requests map to the nearest level the model offers. |
 
 ---
 
@@ -336,8 +342,9 @@ npm test
 # Run launcher background lifecycle smoke test
 npm run smoke:launcher
 
-# Run live zero-cost inference smoke test
+# Run live zero-cost inference smoke tests (direct client tools; OpenCode agent)
 npm run smoke -- PROVIDER/MODEL
+npm run smoke:agent -- opencode/big-pickle
 ```
 
 ### Protocol Tests Validate:
@@ -354,8 +361,7 @@ npm run smoke -- PROVIDER/MODEL
 <details>
 <summary><strong>1. HTTP 403 FreeTierError on OpenCode Zen Models</strong></summary>
 
-The five currently supported Zen free endpoints tested returned HTTP 403 `FreeTierError`, restricting external use. Big Pickle also failed through the genuine latest OpenCode CLI v1.18.31; the bridge cannot resolve that provider response. This is not evidence that changing a user-agent header is a supported fix.
-**Current alternatives:** An accessible provider API-key route or an installed local model. These alternatives do not fulfill the Zen free-model goal; see [verification results](VERIFICATION.md) and [OpenCode's matching issue](https://github.com/anomalyco/opencode/issues/49431).
+OpenCode allows its free tier only from within OpenCode, so direct calls return `FreeTierError`. Since 0.2.0 the app and `init` route these models through the **OpenCode agent** automatically: they show an "OpenCode agent" badge. If one still fails, check that `opencode run -m opencode/big-pickle "hi"` works in Terminal. The agent uses OpenCode's own tools under the policy in **Settings → OpenCode agent**. Claude Code's or Codex's own tools are not used with these models; pick a direct model (API key, Ollama, OpenRouter) when you need them.
 </details>
 
 <details>
@@ -382,6 +388,9 @@ node dist/cli.js init --model PROVIDER/MODEL --port 49152
 ---
 
 ## 📄 License
+
+Brand marks are from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT) and remain trademarks of their owners.
+
 
 This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 

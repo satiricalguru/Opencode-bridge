@@ -3,7 +3,7 @@ import { open, access, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { SERVICE, VERSION } from './gateway.js';
+import { SERVICE, VERSION, healthRoutes } from './gateway.js';
 import { atomicJSON, readJSON, stateDir } from './storage.js';
 import type { BridgeConfig } from './types.js';
 
@@ -14,7 +14,7 @@ export async function probeGateway(config: BridgeConfig): Promise<any> {
   if (!response.ok || health.service !== SERVICE || health.version !== VERSION) throw new Error('Port is occupied by a different or incompatible service.');
   const models = await fetch(`${url}/v1/models`, { headers: { authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(1500), redirect: 'error' });
   if (!models.ok) throw new Error('The running gateway does not match this bridge credential.');
-  if (JSON.stringify(health.routes) !== JSON.stringify(config.routes.map(r => ({ id: r.id, ref: r.ref, protocol: r.protocol })))) throw new Error('Gateway routes differ from the current configuration. Stop it before changing routes.');
+  if (JSON.stringify(health.routes) !== JSON.stringify(healthRoutes(config))) throw new Error('Gateway routes differ from the current configuration. Stop it before changing routes.');
   return health;
 }
 export class GatewaySupervisor {

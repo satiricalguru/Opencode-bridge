@@ -169,7 +169,7 @@ test('non-streaming tools and provider reasoning replay stay out of synthetic th
 test('unsupported content/explicit thinking fail clearly without an upstream call', async t => {
   let calls = 0;
   const { post } = await setup(t, 'chat', async () => { calls++; return Response.json({}); });
-  for (const body of [request({ thinking: { type: 'adaptive' } }), request({ messages: [{ role: 'user', content: [{ type: 'document' }] }] }), request({ messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64' } }] }] }), request({ tools: [{ name: 'web_search', type: 'web_search_20260209' }] })]) assert.equal((await post(body)).status, 400);
+  for (const body of [request({ thinking: { type: 'enabled', budget_tokens: 2048 } }), request({ messages: [{ role: 'user', content: [{ type: 'document' }] }] }), request({ messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64' } }] }] }), request({ tools: [{ name: 'web_search', type: 'web_search_20260209' }] })]) assert.equal((await post(body)).status, 400);
   assert.equal(calls, 0);
 });
 test('upstream status errors are normalized without echoing secrets or prompt bodies', async t => {

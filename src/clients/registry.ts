@@ -1,10 +1,8 @@
 import type { ClientDescriptor, DesktopClient } from './types.js';
 
 // Descriptors are UI metadata. Only registered implementations may perform actions.
-export const futureClients: ClientDescriptor[] = [{
-  id: 'chatgpt', name: 'ChatGPT Desktop', description: 'Future integration', availability: 'planned', protocol: null,
-  reason: 'A supported way to connect external inference must be established before this integration can be enabled.',
-}];
+// The former ChatGPT placeholder is now served by the Codex adapter (same app bundle).
+export const futureClients: ClientDescriptor[] = [];
 export class ClientRegistry {
   private clients: Map<string, DesktopClient>;
   constructor(clients: DesktopClient[]) {

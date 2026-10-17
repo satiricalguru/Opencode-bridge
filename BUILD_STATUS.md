@@ -1,6 +1,40 @@
 # Build status
 
-Updated 18 September 2026. Initial implementation: `opencode-claude-bridge` 0.1.0. See [VERIFICATION.md](VERIFICATION.md) for current live model mapping and free-route checks.
+Updated 17 October 2026: `opencode-claude-bridge` 0.2.0. See [VERIFICATION.md](VERIFICATION.md) for live results.
+
+## 0.3.0
+
+- **Redesign.** Inspired by the Air design system (Refero): an atmospheric drifting-sky backdrop, hairline glass panels, Inter with one handwritten (Caveat) accent word per headline, and a single blue accent. Light, dark and system themes are synced to macOS (`nativeTheme`, window vibrancy). Motion includes a spring-sliding nav indicator and segmented thumbs, staggered row entry, shimmer skeletons, a count-up model total, a glow and "New" tag for arrivals, toasts, and a launcher orb tinted per app. All motion respects reduced-motion preferences. Fonts and icons are bundled locally to satisfy the CSP.
+- **Real brand icons.** Provider logos lead (Ollama, LM Studio, OpenCode, NVIDIA, OpenRouter, GitHub Copilot, Google…), with a model-family badge (DeepSeek, Qwen, GLM, Kimi, Gemma, Llama, Nemotron…). Provider filter chips carry logos too. Marks come from `@lobehub/icons-static-svg` (MIT).
+- **LM Studio.** Downloaded models are discovered through its REST API, or via `lms ls` when its server is off. They use LM Studio's Anthropic-compatible `/v1/messages`, like Ollama. On launch the bridge starts LM Studio's server and loads the selected model if needed. Models that aren't trained for tool use are shown but disabled.
+- **Live model updates.** A watcher fingerprints Ollama tags, LM Studio models and OpenCode's model cache, auth and config every 4 s. A pull, download, removal or new OpenCode model refreshes the library automatically and shows a toast. Local-only changes reuse the cached OpenCode inventory.
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 65 passed, 0 failed (adds LM Studio discovery and preparation, watcher fingerprints and retry, change reporting, theme IPC) |
+| Live: `ollama pull gemma4:31b-cloud` / `ollama rm` with the real watcher | Arrival detected in about 4 s, removal in about 2 s, no manual refresh |
+| Live: LM Studio 0.4.24 server | `/v1/messages` answers in Anthropic format; REST listing parsed; the RVC and embedding models are correctly not offered |
+| UI in browser with mocked bridge, light and dark | Launchpad, Applications, Settings, theme switching and the simulated model arrival inspected |
+| Electron app from source | Window opened (1240×820) with no errors and quit cleanly |
+
+## 0.2.0
+
+- **OpenCode free models.** A bridge-owned, password-protected `opencode serve` agent runs OpenCode Zen free models, OAuth logins (for example GitHub Copilot) and SDKs without a bridge adapter (Google, Responses). Streaming, tool notes, a permission policy (read-only, edit & run, full), session reuse, project working directory detection, cancellation, and usage are supported. No client-identity spoofing.
+- **Codex.** An OpenAI Responses endpoint (`/v1/responses`) translates to every bridge route, including function and custom (freeform) tools, reasoning effort, usage, `incomplete` and `failed` states. The Codex adapter mirrors `ollama launch codex`: a private `opencode-bridge` profile plus model catalog (`codex --profile opencode-bridge`, opened in Terminal), or a journaled, reversible model selection for the Codex app. Claude and Codex share one gateway and token, and disconnecting one keeps the other served.
+- **Effort control.** Each Claude slot and the Codex model can pin an effort level the backend advertises. Requests for unadvertised levels map to the nearest level. Fixed: models whose levels had gaps (for example only high/max) were capped at Low in Claude, and their effort was silently dropped.
+- **Fixes.** OpenRouter (`@openrouter/ai-sdk-provider`) now gets direct routes. Request paths with `//` are normalized. Chat routes drop adaptive thinking instead of failing when no effort is advertised. Disconnect & Quit restores every connected app, not only Claude. The CLI `init` falls back to the agent for free/OAuth models, and `models` reports agent eligibility.
+- **UI/UX.** Claude/Codex switcher on the Launchpad. Per-slot effort pickers. Codex card. OpenCode agent settings with workspace and permission controls. Free and OpenCode-agent badges. Live Applications count. No text below 10px. Muted text raised to about 5:1 contrast. Model rows use `radiogroup`/`radio` semantics. Fixed the launch panel overlapping the footer, the sidebar clipping at the minimum window height, success banners leaking across pages, NaN port input, and the stale "Zen unavailable" note.
+
+| Check | Result |
+| --- | --- |
+| `npm run check`, `npm run check:ui`, `npm run build:app` | Passed |
+| `npm test` | 60 passed, 0 failed (adds Responses translation/streaming, agent engine against a fake OpenCode server, Codex config edit/restore, Claude+Codex service orchestration, effort resolution, IPC validation) |
+| `npm run smoke:launcher` | Passed |
+| `npm run smoke` (OpenRouter free, direct client-tool round trip) | Passed |
+| `npm run smoke:agent` (DeepSeek V4.1 Flash Free, Big Pickle) | Passed ×2 |
+| Electron app from source, isolated state | Started, renderer loaded, clean quit |
+
+## 0.1.0 (18 September 2026)
 
 ## Delivered
 
@@ -17,7 +51,7 @@ Updated 18 September 2026. Initial implementation: `opencode-claude-bridge` 0.1.
 - README, optional local OpenCode configuration example, protocol/profile tests, and reproducible smoke scripts.
 - Electron desktop app with a searchable/provider-filtered model library, automatic installed Ollama discovery, primary/auxiliary model selection, save/launch/restore controls, settings, and a menu bar tray.
 - Sandboxed renderer, restrictive custom application protocol/CSP, sender-checked and validated IPC with credential-free public DTOs.
-- Shared gateway supervisor, desktop service, per-client saved selections, and a desktop client adapter registry. Claude is implemented; ChatGPT is a disabled planned descriptor.
+- Shared gateway supervisor, desktop service, per-client saved selections, and a desktop client adapter registry. Claude and Codex are implemented (0.2.0).
 - macOS Apple Silicon `.app` packaging and app icon assets; bundled gateway runtime avoids requiring a separate Node install for the packaged app.
 
 ## Validation evidence
@@ -61,4 +95,4 @@ The implementation establishes the gateway/launcher foundation. **The original P
 4. Complete actual client inference/tool validation. Packaged UI and bundled-runtime launcher checks pass; catalog/auth availability is distinct from verified upstream connectivity. The latest Desktop test exposed beta query-string routing, oversized output budgets, and inline system notices; those cases now have regression coverage.
 5. Complete provider option semantics, managed-policy checks, crash supervision, credential-helper/Keychain integration, signed packaging, and supported-version regression coverage before release.
 
-OAuth/Go/Responses/Google provider runtimes remain deferred as described in the implementation plan. A route appearing in discovery is metadata, not a compatibility certification.
+OAuth/Responses/Google provider runtimes are served through the OpenCode agent route since 0.2.0; OpenCode Go remains deferred. A route appearing in discovery is metadata, not a compatibility certification.

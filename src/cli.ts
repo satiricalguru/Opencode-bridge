@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { join } from 'node:path';
-import { inventory, makeRoute, supportedProtocol, credentials } from './opencode.js';
+import { inventory, makeRoute, supportedProtocol, credentials, agentEligible } from './opencode.js';
 import { configPath, initialize, loadConfig, publicConfig } from './config.js';
 import { atomicJSON, readJSON, stateDir } from './storage.js';
 import { SERVICE, VERSION, startGateway } from './gateway.js';
@@ -30,6 +30,9 @@ const help = `OpenCode Claude Bridge ${VERSION}
   restore [--restart]                   Restore the captured previous connection
   stop [--restart]                      Restore if needed and stop background gateway
 
+Models that cannot be reached directly (OpenCode Zen free models, OAuth logins)
+run inside a bridge-owned OpenCode agent. Codex: use the desktop app's Codex card.
+
 Environment: BRIDGE_STATE_DIR, OPENCODE_BIN, OPENCODE_AUTH_FILE,
 OPENCODE_CONFIG_DIR. Keys are resolved from OpenCode or provider env at runtime.
 --restart allows a graceful Desktop restart, which can interrupt active work.
@@ -44,7 +47,7 @@ async function main() {
   if (values.help || command === 'help') { console.log(help); return; }
   if (command === 'models') {
     const models = await inventory();
-    print([...models.entries()].filter(([, m]) => !values.provider || m.providerID === values.provider).map(([ref, m]) => ({ ref, name: m.name, protocol: supportedProtocol(m) || 'unsupported', tools: m.capabilities?.toolcall, context: m.limit?.context, free: m.cost?.input === 0 && m.cost?.output === 0 })));
+    print([...models.entries()].filter(([, m]) => !values.provider || m.providerID === values.provider).map(([ref, m]) => ({ ref, name: m.name, protocol: supportedProtocol(m) || 'unsupported', agent: agentEligible(m), tools: m.capabilities?.toolcall, context: m.limit?.context, free: m.cost?.input === 0 && m.cost?.output === 0 })));
     return;
   }
   if (command === 'init') {
@@ -57,9 +60,18 @@ async function main() {
       fable: values.fable || values.model,
       sonnet46: values.sonnet46 || values.model,
     };
-    for (const slot of CLAUDE_SLOTS) routes.push(await makeRoute(slotRefs[slot.key], slot.key, models));
-    // Check auth without making an inference request or persisting upstream keys.
-    for (const route of routes) await credentials(route);
+    for (const slot of CLAUDE_SLOTS) {
+      // Like the app: prefer a direct route, else run the model inside OpenCode's agent
+      // (free Zen models, OAuth logins, SDKs without a bridge adapter).
+      let route;
+      try { route = await makeRoute(slotRefs[slot.key], slot.key, models); await credentials(route); }
+      catch (err) {
+        const meta = models.get(slotRefs[slot.key]);
+        if (!meta || !agentEligible(meta)) throw err;
+        route = await makeRoute(slotRefs[slot.key], slot.key, models, { via: 'agent' });
+      }
+      routes.push(route);
+    }
     const config = await initialize(routes, values.port ? Number(values.port) : 41415, stateDir(), values['auto-mode']);
     print({ configFile: configPath(), ...publicConfig(config) }); return;
   }
