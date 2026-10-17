@@ -94,6 +94,29 @@ function startSky() {
 }
 try { startSky(); } catch (err) { console.warn('WebGL sky disabled:', err); }
 
+/* ---------- Headline: wrap each word for the masked rise ---------- */
+{
+  const h1 = document.querySelector('.display.kinetic');
+  let i = 0;
+  const wrap = node => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === 3) {
+        const frag = document.createDocumentFragment();
+        for (const part of child.textContent.split(/(\s+)/)) {
+          if (!part) continue;
+          if (/^\s+$/.test(part)) { frag.append(part); continue; }
+          const w = document.createElement('span'); w.className = 'w'; w.setAttribute('aria-hidden', 'true');
+          const inner = document.createElement('span'); inner.textContent = part; inner.style.setProperty('--i', i++);
+          w.append(inner); frag.append(w);
+        }
+        child.replaceWith(frag);
+      } else if (child.nodeType === 1 && child.tagName !== 'svg') wrap(child);
+    }
+  };
+  wrap(h1);
+  requestAnimationFrame(() => requestAnimationFrame(() => h1.classList.add('in')));
+}
+
 /* ---------- Logos ---------- */
 for (const el of document.querySelectorAll('[data-logo]')) el.style.setProperty('--logo', `url(logos/${el.dataset.logo}.svg)`);
 const LOGOS = [['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'], ['openrouter', 'OpenRouter'], ['nvidia', 'NVIDIA'], ['deepseek', 'DeepSeek'], ['qwen', 'Qwen'], ['kimi', 'Kimi'], ['zhipu', 'GLM'], ['gemini', 'Gemini'], ['openai', 'OpenAI'], ['githubcopilot', 'Copilot'], ['mistral', 'Mistral'], ['meta', 'Llama'], ['grok', 'Grok'], ['minimax', 'MiniMax']];
