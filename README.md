@@ -16,6 +16,11 @@ Run **free OpenCode Zen models**, **Ollama**, **LM Studio**, **OpenRouter**, **N
 </p>
 
 <p>
+  <a href="https://github.com/satiricalguru/Opencode-bridge/releases/latest"><b>⬇︎ Download for macOS</b></a> ·
+  <a href="https://satiricalguru.github.io/Opencode-bridge/"><b>🌐 Website</b></a>
+</p>
+
+<p>
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-see-it-in-action">Demo</a> ·
   <a href="#-codex">Codex</a> ·
@@ -70,7 +75,9 @@ Bridge checks Ollama, LM Studio and OpenCode every few seconds using cheap finge
 
 ## 🚀 Quick start
 
-**You need:** macOS (Apple Silicon), Node 22+, the [OpenCode CLI](https://opencode.ai) with at least one provider or the free tier, and optionally Claude Desktop, Codex, Ollama or LM Studio.
+**Easiest:** grab the `.dmg` from [Releases](https://github.com/satiricalguru/Opencode-bridge/releases/latest), drag Bridge to Applications, then right-click → **Open** the first time (the build is unsigned).
+
+**From source**, you need macOS (Apple Silicon), Node 22+, the [OpenCode CLI](https://opencode.ai) with at least one provider or the free tier, and optionally Claude Desktop, Codex, Ollama or LM Studio.
 
 ```bash
 git clone https://github.com/satiricalguru/Opencode-bridge.git

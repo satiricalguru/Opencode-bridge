@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenCode Bridge — any model, inside Claude & Codex</title>
+<meta name="description" content="Run free OpenCode Zen models, Ollama, LM Studio, OpenRouter and NVIDIA inside Claude Desktop and Codex. Claude keeps its model names; your model answers, at your effort level." />
+<meta name="theme-color" content="#0b0c0e" />
+<meta property="og:title" content="OpenCode Bridge" />
+<meta property="og:description" content="Any model. Your favourite apps. Zero friction." />
+<meta property="og:image" content="media/hero-dark.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="media/icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="OpenCode Bridge home"><img src="media/icon.png" alt="" width="28" height="28" /><span>OpenCode Bridge</span></a>
+  <nav aria-label="Primary">
+    <a href="#models">Models</a>
+    <a href="#how">How it works</a>
+    <a href="#codex">Codex</a>
+    <a href="#trust">Security</a>
+    <a href="https://github.com/satiricalguru/Opencode-bridge" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+  <a class="btn btn-light btn-sm" href="#download" data-download>Download<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9m0 0 3.5-3.5M8 11 4.5 7.5M3 14h10" /></svg></a>
+</header>
+
+<main id="main">
+<!-- Hero: WebGL night sky with the bridge arch -->
+<section class="hero" id="top">
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <a class="pill" href="#models" data-reveal><span class="dot dot-orange"></span>v0.3.0 · Free OpenCode models now run in Claude</a>
+    <h1 class="display" data-reveal>Any model.<br />Your apps. <em>Zero</em> friction.</h1>
+    <p class="lede" data-reveal>Run free OpenCode Zen models, Ollama, LM Studio, OpenRouter and NVIDIA inside <b>Claude Desktop</b> and <b>Codex</b>. Claude keeps its own model names — the model you pick answers, at the effort you choose.</p>
+    <div class="cta-row" data-reveal>
+      <a class="btn btn-light" href="#download" data-download><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 2.4c-.6.7-1.5 1.2-2.4 1.1-.1-.9.3-1.8.9-2.4.6-.7 1.6-1.1 2.4-1.1.1.9-.3 1.8-.9 2.4ZM11.5 3.7c-1.3-.1-2.5.8-3.1.8s-1.6-.7-2.7-.7C4.3 3.8 3 4.6 2.3 6c-1.4 2.5-.4 6.1 1 8.1.7 1 1.5 2 2.5 2s1.4-.6 2.6-.6 1.5.6 2.6.6 1.7-1 2.4-2c.8-1.1 1.1-2.2 1.1-2.3 0 0-2.1-.8-2.1-3.2 0-2 1.6-2.9 1.7-3-.9-1.4-2.4-1.5-2.9-1.5Z" fill="currentColor" stroke="none"/></svg>Download for macOS</a>
+      <a class="btn btn-ghost" href="https://github.com/satiricalguru/Opencode-bridge" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" stroke="none" d="M8 0a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.4.7 0-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 0-2.1 0 0 .7-.2 2.2.8a7.6 7.6 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 8 0Z"/></svg>Star on GitHub</a>
+    </div>
+    <p class="meta mono" data-reveal>macOS · Apple Silicon · MIT · 65 tests passing</p>
+  </div>
+  <div class="hero-shot" id="heroShot">
+    <div class="window">
+      <div class="window-bar"><i></i><i></i><i></i><span class="mono">OpenCode Bridge</span></div>
+      <picture><source media="(prefers-color-scheme: light)" srcset="media/launchpad-dark.png" /><img src="media/launchpad-dark.png" alt="OpenCode Bridge launchpad with a model library and a Claude / Codex launcher" width="1240" height="820" /></picture>
+    </div>
+  </div>
+</section>
+
+<!-- Logo strip -->
+<section class="logos" aria-label="Works with">
+  <p class="eyebrow mono">Works with the models and apps you already use</p>
+  <div class="marquee"><div class="marquee-track" id="marquee"></div></div>
+</section>
+
+<!-- Chromatic tiles -->
+<section class="section" id="models">
+  <div class="section-head" data-reveal>
+    <p class="eyebrow mono"><span class="dot dot-orange"></span>What it unlocks</p>
+    <h2 class="heading">Three things your apps <em>couldn’t</em> do before.</h2>
+  </div>
+  <div class="tiles">
+    <article class="tile tile-iris" data-reveal>
+      <span class="tile-label mono">Free tier</span>
+      <h3>Free OpenCode models, for real.</h3>
+      <p>Big Pickle, DeepSeek V4.1 Flash Free, GLM-5.3 Flash Free, Nemotron — they only run inside OpenCode, so Bridge runs them in a private OpenCode agent. No key, no tricks.</p>
+      <div class="tile-logos"><i data-logo="opencode"></i><i data-logo="deepseek"></i><i data-logo="zhipu"></i><i data-logo="nvidia"></i></div>
+    </article>
+    <article class="tile tile-orchid" data-reveal>
+      <span class="tile-label mono">Claude Desktop</span>
+      <h3>Claude names. Your models.</h3>
+      <p>Claude still shows Sonnet 5, Opus 5, Haiku 4.5, Fable 5 and Sonnet 4.6. You choose what answers each one — with its own effort, from Low to Max.</p>
+      <div class="tile-logos"><i data-logo="claude"></i><i data-logo="ollama"></i><i data-logo="kimi"></i><i data-logo="qwen"></i></div>
+    </article>
+    <article class="tile tile-peri" data-reveal>
+      <span class="tile-label mono">Codex</span>
+      <h3>Codex, on any model.</h3>
+      <p>One click opens <code>codex --profile opencode-bridge</code>, or switches the Codex app to your model. Disconnect restores your config line-for-line.</p>
+      <div class="tile-logos"><i data-logo="codex"></i><i data-logo="openrouter"></i><i data-logo="lmstudio"></i><i data-logo="openai"></i></div>
+    </article>
+  </div>
+</section>
+
+<!-- Pinned scroll story -->
+<section class="story" id="how" aria-label="How it works">
+  <div class="story-sticky">
+    <div class="story-copy">
+      <p class="eyebrow mono"><span class="dot dot-orange"></span>How it works</p>
+      <h2 class="heading">Three steps. <em>Thirty</em> seconds.</h2>
+      <ol class="steps" id="steps">
+        <li class="active"><span class="mono">01</span><div><h3>Pick a model</h3><p>Every model from OpenCode, Ollama and LM Studio — free, local and agent models clearly badged. New downloads appear on their own.</p></div></li>
+        <li><span class="mono">02</span><div><h3>Map & pin effort</h3><p>Point each Claude model name at any backend and pin Low → Max. Requests snap to levels the model really supports.</p></div></li>
+        <li><span class="mono">03</span><div><h3>Launch</h3><p>Open Claude or Codex on your model. Restore puts everything back exactly — journaled before a single byte changes.</p></div></li>
+      </ol>
+      <div class="story-progress"><span id="storyBar"></span></div>
+    </div>
+    <div class="story-stage">
+      <div class="window window-sm">
+        <div class="window-bar"><i></i><i></i><i></i><span class="mono" id="storyTitle">Launchpad</span></div>
+        <div class="story-frames">
+          <img class="active" src="media/launchpad-dark.png" alt="Model library and launcher" loading="lazy" width="1240" height="820" />
+          <img src="media/applications-dark.png" alt="Claude model names mapped to real models with effort levels" loading="lazy" width="1240" height="820" />
+          <img src="media/codex-dark.png" alt="Launcher switched to Codex" loading="lazy" width="1240" height="820" />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Live discovery + metrics -->
+<section class="section" aria-label="Live model discovery">
+  <div class="split">
+    <div data-reveal>
+      <p class="eyebrow mono"><span class="dot dot-green"></span>Live library</p>
+      <h2 class="heading">Pull a model. <em>Watch</em> it arrive.</h2>
+      <p class="body">Bridge fingerprints Ollama, LM Studio and OpenCode every few seconds. <code>ollama pull</code>, an LM Studio download or a newly connected provider slides into the library — no refresh button required.</p>
+    </div>
+    <div class="window window-sm" data-reveal>
+      <div class="window-bar"><i></i><i></i><i></i><span class="mono">ollama pull llama4-scout</span></div>
+      <img src="media/live-models.gif" alt="A newly pulled Ollama model slides into the library with a New badge and a toast" loading="lazy" width="860" height="569" />
+    </div>
+  </div>
+  <div class="metrics" id="metrics">
+    <div class="metric" data-reveal><span class="mono label">Models discovered</span><b data-count="594">0</b><span class="mono sub">on a real dev Mac</span></div>
+    <div class="metric" data-reveal><span class="mono label">Free Zen models</span><b data-count="12">0</b><span class="mono sub">via the OpenCode agent</span></div>
+    <div class="metric" data-reveal><span class="mono label">New model detected</span><b data-count="4" data-suffix="s">0</b><span class="mono sub">after <i>ollama pull</i></span></div>
+    <div class="metric" data-reveal><span class="mono label">Tests passing</span><b data-count="65">0</b><span class="mono sub">plus live smokes</span></div>
+  </div>
+</section>
+
+<!-- Codex terminal -->
+<section class="section codex" id="codex">
+  <div class="section-head" data-reveal>
+    <p class="eyebrow mono"><span class="dot dot-orange pulse"></span>Recorded session · real output</p>
+    <h2 class="heading">Codex, running on a <em>free</em> model.</h2>
+    <p class="body center">Codex CLI → OpenCode Bridge → OpenRouter’s free Nemotron 3 Super. Codex ran its own shell tools through the Responses ⇄ Messages translation.</p>
+  </div>
+  <figure class="terminal" data-reveal>
+    <img src="media/codex-cli.gif" alt="Codex runs wc -l and cat on app.py through OpenCode Bridge and summarises the Flask app" loading="lazy" width="900" height="552" />
+    <figcaption class="mono">codex --profile opencode-bridge exec "Run a shell command to count the lines in app.py…"</figcaption>
+  </figure>
+</section>
+
+<!-- Theme comparison -->
+<section class="section" aria-label="Light and dark themes">
+  <div class="section-head" data-reveal>
+    <p class="eyebrow mono"><span class="dot dot-green"></span>Light & dark</p>
+    <h2 class="heading">Made to live on your <em>desktop.</em></h2>
+    <p class="body center">Glass panels, real provider logos and spring motion — in both themes, synced with macOS. Drag to compare.</p>
+  </div>
+  <div class="compare" id="compare" data-reveal style="--pos:50%">
+    <img src="media/applications-light.png" alt="Applications page in light theme" loading="lazy" width="1240" height="820" />
+    <div class="compare-dark"><img src="media/applications-dark.png" alt="Applications page in dark theme" loading="lazy" width="1240" height="820" /></div>
+    <button class="compare-handle" id="compareHandle" aria-label="Drag to compare light and dark themes" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span></span></button>
+  </div>
+</section>
+
+<!-- Feature grid -->
+<section class="section" id="trust">
+  <div class="section-head" data-reveal>
+    <p class="eyebrow mono"><span class="dot dot-orange"></span>Built carefully</p>
+    <h2 class="heading">Powerful, and <em>politely</em> reversible.</h2>
+  </div>
+  <div class="features">
+    <article class="feature" data-reveal><span class="mono label">Effort</span><h3>Low → Max, per model</h3><p>Pin an effort for each Claude model name or for Codex. Unsupported levels map to the nearest real one — never silently dropped.</p></article>
+    <article class="feature" data-reveal><span class="mono label">Local</span><h3>Ollama & LM Studio</h3><p>Native Anthropic endpoints. LM Studio’s server starts and loads your model on launch. Nothing downloads by browsing.</p></article>
+    <article class="feature" data-reveal><span class="mono label">Agent</span><h3>OpenCode does the work</h3><p>Agent models run OpenCode’s own tools under your policy — read-only by default, edit & run, or full access.</p></article>
+    <article class="feature" data-reveal><span class="mono label">Security</span><h3>Loopback only</h3><p>127.0.0.1, Host checks, a random 256-bit token, and a password-protected OpenCode server. Keys stay in OpenCode.</p></article>
+    <article class="feature" data-reveal><span class="mono label">Recovery</span><h3>Journaled, exact undo</h3><p>Claude and Codex edits are journaled before any write. Restore detects outside edits and refuses to clobber them.</p></article>
+    <article class="feature" data-reveal><span class="mono label">CLI</span><h3>Headless when you want</h3><p><code>init</code>, <code>launch</code>, <code>status</code>, <code>restore</code> — everything the app does, scriptable.</p></article>
+  </div>
+</section>
+
+<!-- Quick start -->
+<section class="section quick" aria-label="Build from source">
+  <div class="split">
+    <div data-reveal>
+      <p class="eyebrow mono"><span class="dot dot-green"></span>From source</p>
+      <h2 class="heading">Prefer the <em>terminal?</em></h2>
+      <p class="body">Three commands. Node 22+ and the OpenCode CLI are all you need.</p>
+    </div>
+    <div class="code" data-reveal>
+      <div class="code-bar"><span class="mono">zsh</span><button class="copy mono" data-copy="git clone https://github.com/satiricalguru/Opencode-bridge.git&#10;cd Opencode-bridge && npm install&#10;npm run app">Copy</button></div>
+<pre class="mono"><span class="c">$</span> git clone https://github.com/satiricalguru/Opencode-bridge.git
+<span class="c">$</span> cd Opencode-bridge && npm install
+<span class="c">$</span> npm run app</pre>
+    </div>
+  </div>
+</section>
+
+<!-- Download -->
+<section class="section download" id="download">
+  <div class="download-card" data-reveal>
+    <img src="media/icon.png" alt="" width="96" height="96" class="download-icon" />
+    <p class="eyebrow mono dark"><span class="dot dot-orange"></span><span id="relName">Latest release</span></p>
+    <h2 class="heading dark">Download <em>OpenCode Bridge</em></h2>
+    <p class="body dark">For macOS on Apple Silicon. Free and open source under MIT.</p>
+    <div class="cta-row">
+      <a class="btn btn-dark" id="dmgLink" href="https://github.com/satiricalguru/Opencode-bridge/releases/latest">Download .dmg<span class="mono size" id="dmgSize"></span></a>
+      <a class="btn btn-outline" href="https://github.com/satiricalguru/Opencode-bridge/releases" target="_blank" rel="noopener">All releases</a>
+    </div>
+    <p class="note mono dark">Unsigned build — the first time, right-click the app → Open.</p>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div class="footer-brand"><img src="media/icon.png" alt="" width="32" height="32" /><p>Any model. Your apps.<br /><em>Zero</em> friction.</p></div>
+    <div><h4 class="mono">Product</h4><a href="#models">Models</a><a href="#how">How it works</a><a href="#codex">Codex</a><a href="#download">Download</a></div>
+    <div><h4 class="mono">Docs</h4><a href="https://github.com/satiricalguru/Opencode-bridge#readme">README</a><a href="https://github.com/satiricalguru/Opencode-bridge/blob/main/VERIFICATION.md">Verification</a><a href="https://github.com/satiricalguru/Opencode-bridge/blob/main/INTEGRATIONS.md">Architecture</a></div>
+    <div><h4 class="mono">Project</h4><a href="https://github.com/satiricalguru/Opencode-bridge">GitHub</a><a href="https://github.com/satiricalguru/Opencode-bridge/issues">Issues</a><a href="https://github.com/satiricalguru/Opencode-bridge/blob/main/LICENSE">MIT License</a></div>
+  </div>
+  <p class="fine mono">Not affiliated with Anthropic, OpenAI, OpenCode, Ollama or LM Studio. Brand marks via LobeHub Icons (MIT) belong to their owners.</p>
+</footer>
+
+<script src="main.js" type="module"></script>
+</body>
+</html>
