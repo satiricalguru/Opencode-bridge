@@ -65,6 +65,9 @@ Claude Desktop sends standard Anthropic Messages API requests directly to the br
 | **🛠️ Rich CLI Interface** | Complete terminal client for headless workflows, background daemons, and scripting. |
 | **🆓 Free OpenCode Zen Models** | Big Pickle, DeepSeek V4.1 Flash Free, GLM-5.3 Flash Free, Nemotron and more run through a bridge-owned OpenCode agent, with a read-only, edit, or full-access tool policy. |
 | **🧩 Codex Support** | `/v1/responses` endpoint plus an `opencode-bridge` Codex profile (`codex --profile opencode-bridge`) or a reversible Codex app selection, like `ollama launch codex`. |
+| **🎨 Premium Light & Dark UI** | Atmospheric glass design with system/light/dark themes, smooth motion, and real provider logos (Ollama, LM Studio, OpenCode, NVIDIA, OpenRouter…). |
+| **🔄 Live Model Discovery** | Pull a model in Ollama, download one in LM Studio, or add a provider in OpenCode — it appears within seconds, no refresh needed. |
+| **🖥️ LM Studio** | Downloaded LM Studio models run through its Anthropic-compatible endpoint; Bridge starts its server and loads the model on launch. |
 | **🎚️ Effort Levels** | Pin Low through Max per Claude slot or for Codex; unsupported requests map to the nearest level the model offers. |
 
 ---
@@ -385,6 +388,9 @@ node dist/cli.js init --model PROVIDER/MODEL --port 49152
 ---
 
 ## 📄 License
+
+Brand marks are from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT) and remain trademarks of their owners.
+
 
 This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 

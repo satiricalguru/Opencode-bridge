@@ -1,5 +1,11 @@
 # Model mapping and free-route verification
 
+## 17 October 2026 — v0.3.0: redesign, LM Studio, live model updates
+
+- Real watcher + real Ollama 0.35.1: `ollama pull gemma4:31b-cloud` was detected and listed about 4 s later; `ollama rm` was reflected about 2 s later. Ollama was left with its original empty model list.
+- LM Studio 0.4.24: with its server started, `POST /v1/messages` returned an Anthropic-format error ("No models loaded"), confirming the Messages endpoint; `/api/v1/models` lists capabilities. This machine has only an RVC voice model and an embedding model, so no LM Studio chat inference was run. Load and start behaviour is covered by fixture tests. The server was stopped afterwards.
+- The UI was inspected in light and dark themes against a mocked bridge. The Electron app booted from source and quit cleanly. macOS screen recording isn't permitted for the verifying shell, so the native window itself (vibrancy) was not screenshotted.
+
 ## 17 October 2026 — v0.2.0: OpenCode free models, Codex, effort control
 
 Checked on this macOS installation with OpenCode CLI 1.18.34, Codex CLI 0.153.4 and the Codex app (`com.openai.codex`).

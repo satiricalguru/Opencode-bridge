@@ -2,7 +2,7 @@ import type { ClientDescriptor, ClientStatus } from '../clients/types.js';
 import type { Effort, OpenCodeAgentSettings, Slot, Tier } from '../types.js';
 
 export interface ModelItem {
-  ref: string; name: string; provider: string; source: 'opencode' | 'ollama';
+  ref: string; name: string; provider: string; source: 'opencode' | 'ollama' | 'lmstudio';
   protocol: 'anthropic' | 'chat' | 'opencode' | 'unsupported'; via: 'direct' | 'agent'; efforts: Effort[];
   tools: boolean; vision: boolean; context: number; free: boolean; enabled: boolean; reason?: string;
 }
@@ -23,6 +23,8 @@ export type DesktopRequest =
   | { action: 'disconnect' | 'disconnect-quit'; client: string; restart: boolean }
   | { action: 'stop' }
   | { action: 'settings'; agent: OpenCodeAgentSettings }
+  | { action: 'theme'; theme: 'system' | 'light' | 'dark' }
   | { action: 'open-state' };
 export type DesktopResponse = { ok: true; state: DesktopState } | { ok: false; error: string };
-export interface DesktopAPI { request(value: DesktopRequest): Promise<DesktopResponse> }
+export interface ModelChange { state: DesktopState; added: Array<Pick<ModelItem, 'ref' | 'name' | 'provider' | 'source'>>; removed: Array<Pick<ModelItem, 'ref' | 'name' | 'provider' | 'source'>> }
+export interface DesktopAPI { request(value: DesktopRequest): Promise<DesktopResponse>; onChange(listener: (change: ModelChange) => void): () => void }

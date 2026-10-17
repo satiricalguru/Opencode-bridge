@@ -2,6 +2,21 @@
 
 Updated 17 October 2026: `opencode-claude-bridge` 0.2.0. See [VERIFICATION.md](VERIFICATION.md) for live results.
 
+## 0.3.0
+
+- **Redesign.** Inspired by the Air design system (Refero): an atmospheric drifting-sky backdrop, hairline glass panels, Inter with one handwritten (Caveat) accent word per headline, and a single blue accent. Light, dark and system themes are synced to macOS (`nativeTheme`, window vibrancy). Motion includes a spring-sliding nav indicator and segmented thumbs, staggered row entry, shimmer skeletons, a count-up model total, a glow and "New" tag for arrivals, toasts, and a launcher orb tinted per app. All motion respects reduced-motion preferences. Fonts and icons are bundled locally to satisfy the CSP.
+- **Real brand icons.** Provider logos lead (Ollama, LM Studio, OpenCode, NVIDIA, OpenRouter, GitHub Copilot, Google…), with a model-family badge (DeepSeek, Qwen, GLM, Kimi, Gemma, Llama, Nemotron…). Provider filter chips carry logos too. Marks come from `@lobehub/icons-static-svg` (MIT).
+- **LM Studio.** Downloaded models are discovered through its REST API, or via `lms ls` when its server is off. They use LM Studio's Anthropic-compatible `/v1/messages`, like Ollama. On launch the bridge starts LM Studio's server and loads the selected model if needed. Models that aren't trained for tool use are shown but disabled.
+- **Live model updates.** A watcher fingerprints Ollama tags, LM Studio models and OpenCode's model cache, auth and config every 4 s. A pull, download, removal or new OpenCode model refreshes the library automatically and shows a toast. Local-only changes reuse the cached OpenCode inventory.
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 65 passed, 0 failed (adds LM Studio discovery and preparation, watcher fingerprints and retry, change reporting, theme IPC) |
+| Live: `ollama pull gemma4:31b-cloud` / `ollama rm` with the real watcher | Arrival detected in about 4 s, removal in about 2 s, no manual refresh |
+| Live: LM Studio 0.4.24 server | `/v1/messages` answers in Anthropic format; REST listing parsed; the RVC and embedding models are correctly not offered |
+| UI in browser with mocked bridge, light and dark | Launchpad, Applications, Settings, theme switching and the simulated model arrival inspected |
+| Electron app from source | Window opened (1240×820) with no errors and quit cleanly |
+
 ## 0.2.0
 
 - **OpenCode free models.** A bridge-owned, password-protected `opencode serve` agent runs OpenCode Zen free models, OAuth logins (for example GitHub Copilot) and SDKs without a bridge adapter (Google, Responses). Streaming, tool notes, a permission policy (read-only, edit & run, full), session reuse, project working directory detection, cancellation, and usage are supported. No client-identity spoofing.

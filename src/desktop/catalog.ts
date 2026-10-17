@@ -3,7 +3,40 @@ import { effortCapability } from '../effort.js';
 import type { Wire } from '../types.js';
 import type { ModelItem } from './contracts.js';
 
-export interface Catalog { metadata: Map<string, Wire>; items: ModelItem[]; notices: string[] }
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+const exec = promisify(execFile);
+export interface Catalog { metadata: Map<string, Wire>; items: ModelItem[]; notices: string[]; openCode?: Map<string, Wire> }
+export const LMSTUDIO_URL = 'http://127.0.0.1:1234';
+export const lmsBin = () => process.env.LMS_BIN || join(homedir(), '.lmstudio', 'bin', 'lms');
+const lmStudioMeta = (key: string, model: Wire, serverUp: boolean): Wire => ({
+  id: key, name: model.display_name || model.displayName || key, providerID: 'lmstudio', _bridgeSource: 'lmstudio', _serverUp: serverUp,
+  // LM Studio 0.4 serves Anthropic Messages at /v1/messages, like Ollama.
+  api: { id: key, url: `${LMSTUDIO_URL}/v1`, npm: '@ai-sdk/anthropic' },
+  limit: { context: Math.min(model.max_context_length || model.maxContextLength || 32768, 131072), output: 8192 },
+  capabilities: { toolcall: (model.capabilities?.trained_for_tool_use ?? model.trainedForToolUse) === true, reasoning: false, input: { image: (model.capabilities?.vision ?? model.vision) === true } },
+  cost: { input: 0, output: 0 }, _type: model.type,
+});
+// LM Studio: the REST API when its server runs, otherwise the `lms` CLI's offline listing.
+// Only lists downloaded models; never loads or downloads one.
+export async function discoverLmStudio(fetcher: typeof fetch = fetch, list: () => Promise<Wire[]> = async () => JSON.parse((await exec(lmsBin(), ['ls', '--json'], { timeout: 8000, maxBuffer: 8 * 1024 * 1024 })).stdout)): Promise<Map<string, Wire>> {
+  const models = new Map<string, Wire>();
+  let entries: Wire[] = []; let serverUp = false;
+  try {
+    const response = await fetcher(`${LMSTUDIO_URL}/api/v1/models`, { signal: AbortSignal.timeout(1500), redirect: 'error' });
+    if (response.ok) { const data = await response.json() as Wire; if (Array.isArray(data.models)) { entries = data.models; serverUp = true; } }
+  } catch {}
+  if (!serverUp) { try { const listed = await list(); if (Array.isArray(listed)) entries = listed; } catch { return models; } }
+  for (const model of entries.slice(0, 200)) {
+    const key = model.key || model.modelKey;
+    if (typeof key !== 'string' || model.type !== 'llm') continue;
+    models.set(`lmstudio/${key}`, lmStudioMeta(key, model, serverUp));
+  }
+  return models;
+}
 export async function discoverLocalModels(fetcher: typeof fetch = fetch): Promise<Map<string, Wire>> {
   const baseURL = 'http://127.0.0.1:11434';
   const response = await fetcher(`${baseURL}/api/tags`, { signal: AbortSignal.timeout(2000), redirect: 'error' });
@@ -31,12 +64,31 @@ export async function discoverLocalModels(fetcher: typeof fetch = fetch): Promis
   }
   return models;
 }
-export async function discoverCatalog(): Promise<Catalog> {
+// Before launch: start LM Studio's server if needed and load the selected models
+// (LM Studio's Messages endpoint answers "No models loaded" otherwise).
+export async function ensureLmStudio(keys: string[], fetcher: typeof fetch = fetch, run: (args: string[]) => Promise<unknown> = args => exec(lmsBin(), args, { timeout: 60_000 })): Promise<void> {
+  if (!keys.length) return;
+  const listing = async () => { try { const r = await fetcher(`${LMSTUDIO_URL}/api/v1/models`, { signal: AbortSignal.timeout(1500), redirect: 'error' }); return r.ok ? await r.json() as Wire : undefined; } catch { return undefined; } };
+  let data = await listing();
+  if (!data) {
+    try { await run(['server', 'start']); } catch { throw new Error('LM Studio’s server could not be started. Open LM Studio and enable its local server.'); }
+    data = await listing();
+    if (!data) throw new Error('LM Studio’s server did not respond on port 1234.');
+  }
+  for (const key of new Set(keys)) {
+    const model = (data.models || []).find((m: Wire) => m.key === key);
+    if (model?.loaded_instances?.length) continue;
+    const response = await fetcher(`${LMSTUDIO_URL}/api/v1/models/load`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: key }), signal: AbortSignal.timeout(300_000), redirect: 'error' }).catch(() => undefined);
+    if (!response?.ok) throw new Error(`LM Studio could not load ${key}. Load it in LM Studio, then try again.`);
+  }
+}
+// reuse: a previous OpenCode inventory, so a local-only change skips the slow CLI call.
+export async function discoverCatalog(reuse?: Map<string, Wire>): Promise<Catalog> {
   const notices: string[] = [];
-  const [openCode, local] = await Promise.allSettled([inventory(), discoverLocalModels()]);
-  const metadata = openCode.status === 'fulfilled' ? openCode.value : new Map<string, Wire>();
+  const [openCode, local, lmstudio] = await Promise.allSettled([reuse ? Promise.resolve(reuse) : inventory(), discoverLocalModels(), discoverLmStudio()]);
+  const metadata = new Map<string, Wire>(openCode.status === 'fulfilled' ? openCode.value : []);
   if (openCode.status === 'rejected') notices.push('OpenCode models could not be read. Check that its CLI is installed and your provider configuration is valid.');
-  if (local.status === 'fulfilled') for (const [ref, meta] of local.value) if (!metadata.has(ref)) metadata.set(ref, meta);
+  for (const found of [local, lmstudio]) if (found.status === 'fulfilled') for (const [ref, meta] of found.value) if (!metadata.has(ref)) metadata.set(ref, meta);
   const auth = new Map<string, Promise<boolean>>();
   const items: ModelItem[] = [];
   for (const [ref, meta] of metadata) {
@@ -48,7 +100,8 @@ export async function discoverCatalog(): Promise<Catalog> {
     // Otherwise run the model inside OpenCode's agent, which OpenCode supports for
     // its free tier, OAuth logins and every SDK it ships.
     let direct: string | undefined;
-    if (!meta.capabilities?.toolcall) reason = 'Desktop integration requires tool-call support.';
+    if (meta._bridgeSource === 'lmstudio' && !meta.capabilities?.toolcall) reason = 'LM Studio reports this model is not trained for tool use.';
+    else if (!meta.capabilities?.toolcall) reason = 'Desktop integration requires tool-call support.';
     else if (protocol === 'unsupported') direct = 'This provider protocol needs an adapter.';
     else if (meta.providerID === 'opencode-go') direct = 'OpenCode Go integration is not enabled.';
     else if (meta.providerID === 'opencode' && free) direct = 'OpenCode free models only run inside OpenCode.';
@@ -58,8 +111,8 @@ export async function discoverCatalog(): Promise<Catalog> {
     }
     if (!reason && direct) { if (agent) via = 'agent'; else reason = direct; }
     const efforts = reason ? [] : effortCapability(meta, via === 'agent' ? 'opencode' : protocol as 'anthropic' | 'chat')?.levels || [];
-    items.push({ ref, name: meta.name || meta.id, provider: meta.providerID, source: meta._bridgeSource === 'ollama' ? 'ollama' : 'opencode', protocol: via === 'agent' ? 'opencode' : protocol, via, efforts, tools: !!meta.capabilities?.toolcall, vision: !!meta.capabilities?.input?.image, context: meta.limit?.context || 32768, free, enabled: !reason, ...(reason ? { reason } : {}) });
+    items.push({ ref, name: meta.name || meta.id, provider: meta.providerID, source: meta._bridgeSource === 'ollama' || meta._bridgeSource === 'lmstudio' ? meta._bridgeSource : 'opencode', protocol: via === 'agent' ? 'opencode' : protocol, via, efforts, tools: !!meta.capabilities?.toolcall, vision: !!meta.capabilities?.input?.image, context: meta.limit?.context || 32768, free, enabled: !reason, ...(reason ? { reason } : {}) });
   }
-  items.sort((a, b) => Number(b.enabled) - Number(a.enabled) || Number(b.source === 'ollama') - Number(a.source === 'ollama') || Number(b.free) - Number(a.free) || a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
-  return { metadata, items, notices };
+  items.sort((a, b) => Number(b.enabled) - Number(a.enabled) || Number(b.source !== 'opencode') - Number(a.source !== 'opencode') || Number(b.free) - Number(a.free) || a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+  return { metadata, items, notices, ...(openCode.status === 'fulfilled' ? { openCode: openCode.value } : {}) };
 }

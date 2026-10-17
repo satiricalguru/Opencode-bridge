@@ -192,3 +192,20 @@ test('IPC accepts per-slot effort, Codex launch targets, and agent settings, and
     { action: 'save', client: 'claude', selection: { model: 'a/b' }, port: 41415, target: 'app' },
   ]) assert.throws(() => parseDesktopRequest(input), JSON.stringify(input));
 });
+test('model changes refresh the catalog, reuse OpenCode inventory for local changes, and report arrivals', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'bridge-desktop-watch-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const item = (ref: string) => ({ ref, name: ref, provider: 'ollama-local', source: 'ollama' as const, protocol: 'anthropic' as const, via: 'direct' as const, efforts: [], tools: true, vision: false, context: 32768, free: true, enabled: true });
+  let refs = ['ollama-local/a']; const reuses: unknown[] = [];
+  const inventory = new Map([['opencode/x', {}]]);
+  const discover = async (reuse?: Map<string, any>) => { reuses.push(reuse); return { notices: [], metadata: new Map(), items: refs.map(item), openCode: inventory } as Catalog; };
+  const service = new DesktopService(new ClientRegistry([]), { start: async () => {}, stop: async () => true }, dir, discover, async () => ({ active: 0, routed: 0 }));
+  // A change before the first refresh is a baseline, not a flood of "new" models.
+  assert.deepEqual((await service.refreshFor(['local'])).added, []);
+  refs = ['ollama-local/a', 'ollama-local/b'];
+  const change = await service.refreshFor(['local']);
+  assert.deepEqual(change.added.map(m => m.ref), ['ollama-local/b']); assert.deepEqual(change.removed, []);
+  assert.equal(reuses.at(-1), inventory);
+  refs = ['ollama-local/b'];
+  const removal = await service.refreshFor(['opencode']);
+  assert.deepEqual(removal.removed.map(m => m.ref), ['ollama-local/a']); assert.equal(reuses.at(-1), undefined);
+});

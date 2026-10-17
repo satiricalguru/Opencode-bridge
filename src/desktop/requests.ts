@@ -16,6 +16,10 @@ export function parseDesktopRequest(value: unknown): DesktopRequest {
     if (Object.keys(value).length !== 2 || !isObject(agent) || Object.keys(agent).some(k => !['workspace', 'permission'].includes(k)) || typeof agent.workspace !== 'string' || !agent.workspace.startsWith('/') || agent.workspace.length > 1024 || agent.workspace.includes('\0') || !['read-only', 'workspace-write', 'full'].includes(agent.permission)) throw new Error('Invalid OpenCode agent settings.');
     return { action: 'settings', agent: { workspace: agent.workspace, permission: agent.permission } };
   }
+  if (value.action === 'theme') {
+    if (Object.keys(value).length !== 2 || !['system', 'light', 'dark'].includes(value.theme)) throw new Error('Invalid theme.');
+    return { action: 'theme', theme: value.theme };
+  }
   if (['state', 'refresh', 'stop', 'open-state'].includes(value.action)) {
     if (Object.keys(value).length !== 1) throw new Error('Unexpected app request fields.');
     return { action: value.action } as DesktopRequest;

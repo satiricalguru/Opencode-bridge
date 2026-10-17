@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, shell, Tray } from 'electron';
 import { mkdir } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -69,8 +69,8 @@ else {
     if (!path.startsWith(rendererRoot + sep)) return new Response('Forbidden', { status: 403 });
     return net.fetch(pathToFileURL(path).href);
   });
-  window = new BrowserWindow({ width: 1180, height: 790, minWidth: 1040, minHeight: 690, show: false,
-    title: 'OpenCode Bridge', backgroundColor: '#f7f7f2', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 19 },
+  window = new BrowserWindow({ width: 1240, height: 820, minWidth: 1040, minHeight: 690, show: false,
+    title: 'OpenCode Bridge', backgroundColor: '#00000000', transparent: false, vibrancy: 'under-window', visualEffectState: 'active', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 19 },
     webPreferences: { preload: join(root, 'desktop', 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true },
   });
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -89,6 +89,7 @@ else {
         case 'save': state = await service.save(request.client, request.selection, request.port); break;
         case 'launch': state = await service.launch(request.client, request.selection, request.port, request.restart, { target: request.target }); break;
         case 'settings': state = await service.settings(request.agent); break;
+        case 'theme': nativeTheme.themeSource = request.theme; state = await service.state(); break;
         case 'apply': state = await service.apply(request.client, request.selection, request.port, request.restart); break;
         case 'disconnect': state = await service.disconnect(request.client, request.restart); break;
         case 'disconnect-quit': await disconnectAll(); state = await service.state(); setImmediate(finishQuit); break;
@@ -118,5 +119,9 @@ else {
   ]));
   await window.loadURL('bridge://app/index.html');
   show();
+  const slim = (m: { ref: string; name: string; provider: string; source: string }) => ({ ref: m.ref, name: m.name, provider: m.provider, source: m.source });
+  await service.watch(change => {
+    if (window && !window.isDestroyed()) window.webContents.send('desktop:changed', { state: change.state, added: change.added.map(slim), removed: change.removed.map(slim) });
+  });
   }).catch(() => { console.error('Desktop startup failed. Rebuild the app and check its packaged assets.'); finishQuit(); });
 }

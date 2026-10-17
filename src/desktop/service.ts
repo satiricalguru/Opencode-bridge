@@ -11,8 +11,9 @@ import type { BridgeConfig, Effort, OpenCodeAgentSettings, Route, Slot } from '.
 import { CLAUDE_SLOTS, routeSlot } from '../slots.js';
 import type { ClientRegistry } from '../clients/registry.js';
 import type { LaunchOptions } from '../clients/types.js';
-import { discoverCatalog, type Catalog } from './catalog.js';
-import type { DesktopState, Preferences, Selection } from './contracts.js';
+import { discoverCatalog, ensureLmStudio, type Catalog } from './catalog.js';
+import { ModelWatcher, type ChangeKind, type Fingerprint } from './watch.js';
+import type { DesktopState, ModelItem, Preferences, Selection } from './contracts.js';
 
 export interface GatewayControl { start(config: BridgeConfig): Promise<void>; stop(config: BridgeConfig): Promise<boolean> }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -20,7 +21,35 @@ export class DesktopService {
   private catalog: Catalog = { metadata: new Map(), items: [], notices: [] };
   private mutating = false;
   get actionInProgress(): boolean { return this.mutating; }
-  constructor(private clients: ClientRegistry, private gateway: GatewayControl, private directory = stateDir(), private discover = discoverCatalog, private probe = probeGateway) {}
+  private watcher?: ModelWatcher;
+  private loaded = false;
+  constructor(private clients: ClientRegistry, private gateway: GatewayControl, private directory = stateDir(), private discover: (reuse?: Map<string, any>) => Promise<Catalog> = discoverCatalog, private probe = probeGateway, private prepareLocal: (keys: string[]) => Promise<void> = ensureLmStudio) {}
+  // Re-discovers when Ollama, LM Studio or OpenCode change and reports newly ready models.
+  // Local-only changes reuse the cached OpenCode inventory.
+  async refreshFor(kinds: ChangeKind[]): Promise<{ state: DesktopState; added: ModelItem[]; removed: ModelItem[] }> {
+    const first = !this.loaded;
+    const before = new Map(this.catalog.items.filter(m => m.enabled).map(m => [m.ref, m]));
+    this.catalog = await this.discover(kinds.includes('opencode') ? undefined : this.catalog.openCode);
+    this.loaded = true;
+    // The first discovery is a baseline, not a list of new arrivals.
+    if (first) return { state: await this.state(), added: [], removed: [] };
+    const after = new Map(this.catalog.items.filter(m => m.enabled).map(m => [m.ref, m]));
+    return { state: await this.state(), added: [...after.values()].filter(m => !before.has(m.ref)), removed: [...before.values()].filter(m => !after.has(m.ref)) };
+  }
+  async watch(listener: (change: { state: DesktopState; added: ModelItem[]; removed: ModelItem[] }) => void, probe?: () => Promise<Fingerprint>, interval?: number): Promise<void> {
+    this.watcher?.stop();
+    this.watcher = new ModelWatcher(async kinds => {
+      // Never swap the catalog underneath a connection action; the next tick retries.
+      if (this.mutating) throw new Error('busy');
+      listener(await this.refreshFor(kinds));
+    }, probe, interval);
+    await this.watcher.start();
+  }
+  unwatch(): void { this.watcher?.stop(); }
+  private async prepare(config: BridgeConfig): Promise<void> {
+    const keys = [...config.routes, ...(config.codexRoutes || [])].filter(r => r.ref.startsWith('lmstudio/')).map(r => r.ref.slice('lmstudio/'.length));
+    await this.prepareLocal(keys);
+  }
   private async config(): Promise<BridgeConfig | undefined> {
     if (!await readJSON(configPath(this.directory))) return undefined;
     return loadConfig(this.directory);
@@ -37,7 +66,7 @@ export class DesktopService {
     if (config?.codexRoutes?.length) fromConfig.codex = { model: config.codexRoutes[0].ref, ...(config.codexRoutes[0].effortOverride ? { effort: { sonnet: config.codexRoutes[0].effortOverride } } : {}) };
     return { version: 1, selectedClient: saved?.selectedClient || 'claude', selections: { ...fromConfig, ...saved?.selections }, port: saved?.port || config?.port || 41415, agent: saved?.agent || config?.opencode || defaultAgentSettings() };
   }
-  async refresh(): Promise<DesktopState> { this.catalog = await this.discover(); return this.state(); }
+  async refresh(): Promise<DesktopState> { this.catalog = await this.discover(); this.loaded = true; return this.state(); }
   async state(): Promise<DesktopState> {
     const config = await this.config();
     const preferences = await this.preferences();
@@ -135,6 +164,7 @@ export class DesktopService {
       if (!unchanged && clientId === 'claude' && claudeJournal) throw new Error('Disconnect before changing a connected model or gateway port.');
       if (!unchanged) { await this.assertIdle(previous); await this.replace(previous, desired); }
       await this.savePreferences(clientId, selection, port);
+      await this.prepare(desired);
       await this.gateway.start(desired);
       try {
         await client.launch(desired, restart, options);
@@ -165,6 +195,7 @@ export class DesktopService {
       if (clientId !== 'claude' && await this.claudeConnected() && previous && port !== previous.port) throw new Error('Disconnect Claude before changing the gateway port.');
       const config = await this.build(clientId, selection, port, previous);
       await this.assertIdle(previous);
+      await this.prepare(config);
       let startedNewGateway = false;
       try {
         await client.apply(config, restart, async () => {

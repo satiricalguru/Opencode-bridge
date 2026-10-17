@@ -1,23 +1,27 @@
 /// <reference path="./global.d.ts" />
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowDownLeft, ArrowUpRight, Asterisk, Bot, Check, ChevronDown, CircleHelp, Cpu, FolderOpen, Gauge, Layers3, LoaderCircle, Monitor, Plug, RefreshCw, Search, Settings2, ShieldCheck, SquareTerminal, Undo2, X } from 'lucide-react';
-import type { DesktopRequest, DesktopState, ModelItem, Selection } from '../../src/desktop/contracts';
+import { Activity, AppWindow, ArrowRight, ArrowUpRight, Bot, Check, ChevronDown, CircleAlert, Cpu, FolderOpen, Gauge, Layers3, LoaderCircle, LogOut, Monitor, Moon, Radar, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, SquareTerminal, Sun, Undo2, X } from 'lucide-react';
+import '@fontsource-variable/inter';
+import '@fontsource/caveat/500.css';
+import type { DesktopRequest, DesktopState, ModelChange, ModelItem, Selection } from '../../src/desktop/contracts';
 import { CLAUDE_SLOTS } from '../../src/slots';
 import type { AgentPermission, Effort, Slot } from '../../src/types';
+import { Mark, MARK_LABEL, ModelMark, providerMark } from './icons';
 import './style.css';
 
 type ClientId = 'claude' | 'codex';
-function BridgeMark({ small = false }: { small?: boolean }) {
-  return <svg className={small ? 'bridge-mark small' : 'bridge-mark'} viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M7 31V20C7 12.82 12.82 7 20 7s13 5.82 13 13v11M13 31V20a7 7 0 0 1 14 0v11M7 25h26" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>;
-}
-const prettyProvider = (p: string) => p === 'ollama-local' ? 'Ollama · local' : p === 'opencode' ? 'OpenCode Zen' : p === 'nvidia' ? 'NVIDIA' : p === 'openrouter' ? 'OpenRouter' : p === 'github-copilot' ? 'GitHub Copilot' : p.replaceAll('-', ' ');
-const contextLabel = (n: number) => n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M context` : `${Math.round(n / 1024)}k context`;
-const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+type Page = 'launch' | 'apps' | 'settings';
+type Theme = 'system' | 'light' | 'dark';
+interface Toast { id: number; tone: 'success' | 'info' | 'error'; title: string; body?: string; icon?: ReactNode }
+
+const prettyProvider = (p: string) => ({ 'ollama-local': 'Ollama', lmstudio: 'LM Studio', opencode: 'OpenCode Zen', nvidia: 'NVIDIA', openrouter: 'OpenRouter', 'github-copilot': 'GitHub Copilot', 'ollama-cloud': 'Ollama Cloud', google: 'Google', openai: 'OpenAI', anthropic: 'Anthropic' } as Record<string, string>)[p] || p.replaceAll('-', ' ').replace(/\b\w/g, c => c.toUpperCase());
+const contextLabel = (n: number) => n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : `${Math.round(n / 1024)}K`;
+const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Med', high: 'High', xhigh: 'XHigh', max: 'Max' };
 const PERMISSIONS: Array<{ value: AgentPermission; label: string; detail: string }> = [
-  { value: 'read-only', label: 'Read only', detail: 'OpenCode may read, search and browse. Edits and commands are declined.' },
-  { value: 'workspace-write', label: 'Edit & run commands', detail: 'Also allows file edits and shell commands inside the working directory.' },
-  { value: 'full', label: 'Full access', detail: 'Also allows reaching outside the working directory. Use with care.' },
+  { value: 'read-only', label: 'Read only', detail: 'Read, search and browse. Edits and commands are declined.' },
+  { value: 'workspace-write', label: 'Edit & run', detail: 'Also edits files and runs commands in the working folder.' },
+  { value: 'full', label: 'Full access', detail: 'Also reaches outside the working folder. Use with care.' },
 ];
 const mappingRows = ['fable', 'opus', 'sonnet', 'haiku', 'sonnet46'] as const;
 const auxiliarySlots = ['opus', 'haiku', 'fable', 'sonnet46'] as const;
@@ -28,26 +32,58 @@ const withEffort = (selection: Selection, slot: Slot, effort: Effort | '') => {
   return { ...selection, effort: Object.keys(next).length ? next : undefined };
 };
 const firstEnabled = (models: ModelItem[]) => models.find(m => m.enabled)?.ref || '';
+const readTheme = (): Theme => { try { const t = localStorage.getItem('bridge-theme'); return t === 'light' || t === 'dark' ? t : 'system'; } catch { return 'system'; } };
+const vars = (value: Record<string, string | number>) => value as CSSProperties;
 
-function ModelTags({ model }: { model: ModelItem }) {
-  return <span className="model-tags">
-    {model.source === 'ollama' && <span className="tag local">Local</span>}
-    {model.free && model.source !== 'ollama' && <span className="tag free">Free</span>}
-    {model.enabled && model.via === 'agent' && <span className="tag agent" title="Runs inside OpenCode’s own agent and tools">OpenCode agent</span>}
-    {model.enabled && model.via === 'direct' && <span className="tag">Tools</span>}
+function BridgeMark() {
+  return <svg className="bridge-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M7 31V20C7 12.82 12.82 7 20 7s13 5.82 13 13v11M13 31V20a7 7 0 0 1 14 0v11M7 25h26" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>;
+}
+// Segmented control with a sliding thumb.
+function Segmented<T extends string>({ options, value, onChange, label, disabled, size = 'md' }: { options: Array<{ value: T; label: ReactNode; title?: string }>; value: T; onChange: (value: T) => void; label: string; disabled?: boolean; size?: 'sm' | 'md' }) {
+  const index = Math.max(0, options.findIndex(o => o.value === value));
+  return <div className={`segmented ${size}`} role="radiogroup" aria-label={label} style={vars({ '--count': options.length, '--index': index })}>
+    <span className="segmented-thumb" aria-hidden="true" />
+    {options.map(option => <button key={option.value} type="button" role="radio" aria-checked={option.value === value} title={option.title} className={option.value === value ? 'active' : ''} disabled={disabled} onClick={() => onChange(option.value)}>{option.label}</button>)}
+  </div>;
+}
+function EffortPicker({ model, value, onChange, disabled, size = 'md' }: { model?: ModelItem; value?: Effort; onChange: (effort: Effort | '') => void; disabled?: boolean; size?: 'sm' | 'md' }) {
+  const levels = model?.efforts || [];
+  if (!levels.length) return <span className="effort-none" title="This model does not advertise effort levels"><Gauge size={13} /> Effort fixed</span>;
+  return <Segmented size={size} label="Effort level" disabled={disabled} value={(value && levels.includes(value) ? value : '') as Effort | ''} onChange={onChange}
+    options={[{ value: '' as const, label: 'Auto', title: 'Let the app choose the effort' }, ...levels.map(level => ({ value: level, label: EFFORT_LABEL[level], title: `Pin ${level} effort` }))]} />;
+}
+function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`switch ${checked ? 'on' : ''}`} disabled={disabled} onClick={() => onChange(!checked)}><span /></button>;
+}
+function Tags({ model, isNew }: { model: ModelItem; isNew: boolean }) {
+  return <span className="tags">
+    {isNew && <span className="tag new">New</span>}
+    {model.source !== 'opencode' && <span className="tag local">Local</span>}
+    {model.free && model.source === 'opencode' && <span className="tag free">Free</span>}
+    {model.enabled && model.via === 'agent' && <span className="tag agent" title="Runs inside OpenCode’s agent and tools">Agent</span>}
   </span>;
 }
-function EffortSelect({ id, model, value, onChange, disabled }: { id: string; model?: ModelItem; value?: Effort; onChange: (effort: Effort | '') => void; disabled?: boolean }) {
-  const levels = model?.efforts || [];
-  return <select id={id} className="effort-select" aria-label="Effort level" value={value && levels.includes(value) ? value : ''} disabled={disabled || !levels.length} onChange={event => onChange(event.target.value as Effort | '')} title={levels.length ? 'Pin an effort level, or let the app choose' : 'This model does not advertise effort levels'}>
-    <option value="">{levels.length ? 'Effort: app decides' : 'Effort: not adjustable'}</option>
-    {levels.map(level => <option key={level} value={level}>Effort: {EFFORT_LABEL[level]}</option>)}
-  </select>;
+function useCount(target: number): number {
+  const [value, setValue] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    const start = performance.now(); const origin = from.current;
+    if (origin === target || matchMedia('(prefers-reduced-motion: reduce)').matches) { from.current = target; setValue(target); return; }
+    let frame = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / 700); const eased = 1 - Math.pow(1 - t, 3);
+      setValue(Math.round(origin + (target - origin) * eased));
+      if (t < 1) frame = requestAnimationFrame(step); else from.current = target;
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  return value;
 }
 
 function App() {
   const [data, setData] = useState<DesktopState>();
-  const [page, setPage] = useState<'launch' | 'apps' | 'settings'>('launch');
+  const [page, setPage] = useState<Page>('launch');
   const [selections, setSelections] = useState<Record<ClientId, Selection>>({ claude: { model: '' }, codex: { model: '' } });
   const [client, setClient] = useState<ClientId>('claude');
   const [port, setPort] = useState(41415);
@@ -57,33 +93,42 @@ function App() {
   const [restart, setRestart] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   const [limit, setLimit] = useState(80);
   const [workspace, setWorkspace] = useState('');
   const [permission, setPermission] = useState<AgentPermission>('read-only');
+  const [theme, setTheme] = useState<Theme>(readTheme);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
   const hydrated = useRef(false);
   const busyRef = useRef(false);
   const selection = selections[client];
   const setSelection = (update: (s: Selection) => Selection, id: ClientId = client) => setSelections(all => ({ ...all, [id]: update(all[id]) }));
 
+  const toast = (item: Omit<Toast, 'id'>) => {
+    const id = Date.now() + Math.random();
+    setToasts(list => [...list.slice(-3), { ...item, id }]);
+    setTimeout(() => setToasts(list => list.filter(t => t.id !== id)), item.tone === 'error' ? 9000 : 5200);
+  };
+  const hydrate = (next: DesktopState) => {
+    if (hydrated.current) return;
+    const id = next.preferences.selectedClient === 'codex' ? 'codex' : 'claude';
+    setClient(id); setPort(next.preferences.port);
+    setSelections({ claude: normalizeSelection(next.preferences.selections.claude || { model: firstEnabled(next.models) }), codex: next.preferences.selections.codex || { model: next.preferences.selections.claude?.model || firstEnabled(next.models) } });
+    setWorkspace(next.preferences.agent.workspace); setPermission(next.preferences.agent.permission);
+    hydrated.current = true;
+  };
   async function request(value: DesktopRequest, label = '', success = '') {
     if (busyRef.current) return;
     busyRef.current = true;
-    if (label) { setBusy(label); setError(''); setMessage(''); }
+    if (label) { setBusy(label); setError(''); }
     try {
       const response = await window.desktop.request(value);
       if (!response.ok) { setError(response.error); return; }
       const next = response.state;
       setData(next);
-      if (!hydrated.current) {
-        const id = next.preferences.selectedClient === 'codex' ? 'codex' : 'claude';
-        setClient(id);
-        setPort(next.preferences.port);
-        setSelections({ claude: normalizeSelection(next.preferences.selections.claude || { model: firstEnabled(next.models) }), codex: next.preferences.selections.codex || { model: next.preferences.selections.claude?.model || firstEnabled(next.models) } });
-        setWorkspace(next.preferences.agent.workspace); setPermission(next.preferences.agent.permission);
-        hydrated.current = true;
-      } else if (value.action === 'refresh') setSelections(all => ({ claude: all.claude.model ? all.claude : normalizeSelection({ model: firstEnabled(next.models) }), codex: all.codex.model ? all.codex : { model: firstEnabled(next.models) } }));
-      if (success) setMessage(success);
+      hydrate(next);
+      if (value.action === 'refresh') setSelections(all => ({ claude: all.claude.model ? all.claude : normalizeSelection({ model: firstEnabled(next.models) }), codex: all.codex.model ? all.codex : { model: firstEnabled(next.models) } }));
+      if (success) toast({ tone: 'success', title: success });
     } catch { setError('The desktop service could not be reached. Reopen the app and try again.'); }
     finally { busyRef.current = false; setBusy(''); }
   }
@@ -91,14 +136,30 @@ function App() {
     void (async () => { await request({ action: 'state' }); await request({ action: 'refresh' }, 'Reading your connections'); })();
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void request({ action: 'state' }); }, 8000);
     const onFocus = () => { void request({ action: 'state' }); };
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void request({ action: 'state' }); };
     window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => { clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibilityChange); };
+    // Live model arrivals from Ollama, LM Studio and OpenCode.
+    const off = window.desktop.onChange?.((change: ModelChange) => {
+      setData(change.state);
+      if (change.added.length) {
+        setFresh(set => new Set([...set, ...change.added.map(m => m.ref)]));
+        const first = change.added[0];
+        toast({ tone: 'info', title: change.added.length === 1 ? `${first.name} is ready` : `${change.added.length} new models are ready`, body: change.added.length === 1 ? `Added from ${prettyProvider(first.provider)}.` : change.added.slice(0, 3).map(m => m.name).join(', ') + (change.added.length > 3 ? '…' : ''), icon: <Mark name={providerMark(first.provider, first.source)} /> });
+      }
+      if (change.removed.length) toast({ tone: 'info', title: change.removed.length === 1 ? `${change.removed[0].name} was removed` : `${change.removed.length} models were removed`, body: `From ${prettyProvider(change.removed[0].provider)}.` });
+    });
+    return () => { clearInterval(timer); window.removeEventListener('focus', onFocus); off?.(); };
   }, []);
   useEffect(() => { setLimit(80); }, [query, provider, readyOnly]);
-  // Success notes belong to the page that produced them; errors stay until dismissed.
-  useEffect(() => { setMessage(''); }, [page]);
+  // Theme: system follows macOS; the native side matches so vibrancy and chrome agree.
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => { root.dataset.theme = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme; };
+    apply(); media.addEventListener('change', apply);
+    try { localStorage.setItem('bridge-theme', theme); } catch {}
+    void window.desktop.request({ action: 'theme', theme }).catch(() => {});
+    return () => media.removeEventListener('change', apply);
+  }, [theme]);
 
   const models = data?.models || [];
   const enabled = models.filter(m => m.enabled);
@@ -114,117 +175,176 @@ function App() {
   const claudeValid = !!find(claudeSelection.model)?.enabled && [claudeSelection.opus, claudeSelection.haiku, claudeSelection.fable, claudeSelection.sonnet46].filter(Boolean).every(ref => find(ref)?.enabled);
   const codexValid = !!find(selections.codex.model)?.enabled;
   const valid = client === 'claude' ? claudeValid : codexValid;
-  const savedClaudeEffort = (slot: Slot) => data?.savedRoutes.find(r => r.slot === slot)?.effort;
   const mappingChanged = data?.savedRoutes.length !== 5 || data.savedRoutes.some(route => route.ref !== mappingRef(claudeSelection, route.slot) || route.effort !== claudeSelection.effort?.[route.slot]) || (data.preferences.selections.claude?.autoMode === true) !== (claudeSelection.autoMode === true);
   const codexRoute = data?.codexRoutes[0];
   const codexChanged = !codexRoute || codexRoute.ref !== selections.codex.model || codexRoute.effort !== selections.codex.effort?.sonnet;
+  const providers = useMemo(() => {
+    const counts = new Map<string, { count: number; source: string }>();
+    for (const m of models) if (!readyOnly || m.enabled) counts.set(m.provider, { count: (counts.get(m.provider)?.count || 0) + 1, source: m.source });
+    return [...counts.entries()].sort((a, b) => Number(b[1].source !== 'opencode') - Number(a[1].source !== 'opencode') || b[1].count - a[1].count);
+  }, [models, readyOnly]);
   const shown = models.filter(m => (!readyOnly || m.enabled) && (provider === 'all' || m.provider === provider) && `${m.name} ${m.ref} ${m.provider}`.toLowerCase().includes(query.toLowerCase()));
-  const providers = [...new Set(models.map(m => m.provider))].sort((a, b) => prettyProvider(a).localeCompare(prettyProvider(b)));
   const agentCount = enabled.filter(m => m.via === 'agent').length;
   const freeCount = enabled.filter(m => m.free).length;
+  const readyCount = useCount(enabled.length);
   const changeSelection = (model: ModelItem) => {
     if (locked || !model.enabled) return;
-    if (client === 'codex') setSelection(s => ({ ...s, model: model.ref, effort: undefined }));
+    if (client === 'codex') setSelection(s => ({ ...s, model: model.ref, effort: s.effort?.sonnet && model.efforts.includes(s.effort.sonnet) ? s.effort : undefined }));
     else setSelection(s => normalizeSelection({ ...s, model: model.ref, effort: s.effort?.sonnet && model.efforts.includes(s.effort.sonnet) ? s.effort : withEffort(s, 'sonnet', '').effort, ...Object.fromEntries(auxiliarySlots.map(key => [key, !s[key] || s[key] === s.model ? model.ref : s[key]])) }));
-    setError(''); setMessage('');
+    setError('');
   };
-  const modelOptions = (ref: string) => <>{ref && !find(ref) && <option value={ref} disabled>{ref} · unavailable</option>}{models.filter(model => model.enabled || model.ref === ref).map(model => <option key={model.ref} value={model.ref} disabled={!model.enabled}>{model.name} · {prettyProvider(model.provider)}{model.via === 'agent' ? ' · OpenCode agent' : ''}{!model.enabled ? ' · unavailable' : ''}</option>)}</>;
-  const launchCodex = (target: 'cli' | 'app') => request({ action: 'launch', client: 'codex', selection: selections.codex, port, restart: target === 'app' ? restart || true : false, target }, target === 'app' ? 'Connecting the Codex app' : 'Opening Codex in Terminal', target === 'app' ? 'Codex app restarted with your model. Disconnect Codex to restore its previous model.' : 'Codex opened in Terminal with the opencode-bridge profile.');
+  const modelOptions = (ref: string) => <>{ref && !find(ref) && <option value={ref} disabled>{ref} · unavailable</option>}{models.filter(model => model.enabled || model.ref === ref).map(model => <option key={model.ref} value={model.ref} disabled={!model.enabled}>{model.name} — {prettyProvider(model.provider)}{model.via === 'agent' ? ' · agent' : ''}</option>)}</>;
+  const launchCodex = (target: 'cli' | 'app') => request({ action: 'launch', client: 'codex', selection: selections.codex, port, restart: target === 'app', target }, target === 'app' ? 'Connecting the Codex app' : 'Opening Codex in Terminal', target === 'app' ? 'Codex app restarted with your model' : 'Codex opened in Terminal');
   const appName = client === 'codex' ? 'Codex' : 'Claude';
   const portValid = Number.isInteger(port) && port >= 1024 && port <= 65535;
+  const pages: Array<{ id: Page; label: string; icon: ReactNode }> = [{ id: 'launch', label: 'Launchpad', icon: <Layers3 size={17} /> }, { id: 'apps', label: 'Applications', icon: <AppWindow size={17} /> }, { id: 'settings', label: 'Settings', icon: <Settings2 size={17} /> }];
+  const discovering = busy.includes('Reading') || busy.includes('Refreshing');
+  const appStatus = (id: ClientId) => { const s = statusOf(id); return !s ? 'checking' : s.recoveryNeeded ? 'warn' : s.connected ? 'on' : s.installed ? 'idle' : 'off'; };
 
-  return <div className="app-shell">
+  return <div className="app">
+    <div className="sky" aria-hidden="true"><span className="cloud c1" /><span className="cloud c2" /><span className="cloud c3" /><span className="grain" /></div>
     <aside className="sidebar">
-      <div className="sidebar-drag" />
-      <div className="brand"><BridgeMark /><div><strong>Bridge</strong><span>by your connections</span></div></div>
-      <div className="nav-label">WORKSPACE</div>
-      <nav aria-label="Main navigation">
-        <button className={page === 'launch' ? 'nav-item active' : 'nav-item'} aria-current={page === 'launch' ? 'page' : undefined} onClick={() => setPage('launch')}><Layers3 size={18} /> Launchpad</button>
-        <button className={page === 'apps' ? 'nav-item active' : 'nav-item'} aria-current={page === 'apps' ? 'page' : undefined} onClick={() => setPage('apps')}><Monitor size={18} /> Applications <span className="nav-count">{data?.clients.length || 2}</span></button>
-        <button className={page === 'settings' ? 'nav-item active' : 'nav-item'} aria-current={page === 'settings' ? 'page' : undefined} onClick={() => setPage('settings')}><Settings2 size={18} /> Settings</button>
+      <div className="drag" />
+      <div className="brand"><BridgeMark /><div><strong>Bridge</strong><span>models → your apps</span></div></div>
+      <nav className="nav" aria-label="Main navigation" style={vars({ '--index': pages.findIndex(p => p.id === page) })}>
+        <span className="nav-indicator" aria-hidden="true" />
+        {pages.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => { setPage(item.id); setError(''); }}>{item.icon}<span>{item.label}</span>{item.id === 'apps' && <span className="nav-count">{data?.clients.length || 2}</span>}</button>)}
       </nav>
-      <div className="sidebar-note"><Plug size={20} /><p>Bring your models.<br /><strong>Keep your workflow.</strong></p><span>OpenCode, Ollama and free models inside Claude and Codex.</span></div>
-      <div className="sidebar-bottom"><div className="sidebar-status"><span className={`dot ${data?.gateway.ready ? 'online' : ''}`} /> {data?.gateway.ready ? `Gateway on :${data.gateway.port}` : 'Gateway idle'}</div><span className="version">OpenCode Bridge · {data?.version || '0.2.0'}</span><button className="sidebar-quit" disabled={!!busy || !!data?.gateway.active} onClick={() => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting')}>Disconnect & Quit <ArrowDownLeft size={12} /></button></div>
+      <div className="side-section">
+        <div className="side-label">Connected apps</div>
+        {(['claude', 'codex'] as const).map(id => <button key={id} className="side-app" onClick={() => { setClient(id); setPage('launch'); }}><span className="side-app-icon"><Mark name={id} /></span><span>{id === 'claude' ? 'Claude' : 'Codex'}</span><span className={`status-dot ${appStatus(id)}`} title={appStatus(id)} /></button>)}
+      </div>
+      <div className="sidebar-foot">
+        <div className={`gateway-pill ${data?.gateway.ready ? 'live' : ''}`}><span className="pulse" /><span>{data?.gateway.ready ? <>Gateway <b>:{data.gateway.port}</b></> : 'Gateway idle'}</span>{data?.gateway.ready && <span className="routed">{data.gateway.routed}</span>}</div>
+        <Segmented size="sm" label="Appearance" value={theme} onChange={setTheme} options={[{ value: 'system', label: <Monitor size={13} />, title: 'Match system' }, { value: 'light', label: <Sun size={13} />, title: 'Light' }, { value: 'dark', label: <Moon size={13} />, title: 'Dark' }]} />
+        <button className="quit" disabled={!!busy || !!data?.gateway.active} onClick={() => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting')}><LogOut size={14} /> Disconnect & Quit</button>
+        <span className="version">v{data?.version || '0.3.0'}</span>
+      </div>
     </aside>
     <main>
-      <div className="title-drag" />
-      <header className="page-header"><div><div className="eyebrow">YOUR DESKTOP, CONNECTED</div><h1>{page === 'launch' ? <>Pick a model.<br /><em>Open something good.</em></> : page === 'apps' ? <>A home for<br /><em>your applications.</em></> : <>A few things,<br /><em>just how you like them.</em></>}</h1></div><button className="refresh-button" aria-label="Refresh models and connections" onClick={() => request({ action: 'refresh' }, 'Refreshing connections')} disabled={!!busy}><RefreshCw size={16} className={busy.includes('Reading') || busy.includes('Refreshing') ? 'spin' : ''} /> Refresh connections</button></header>
-      {(error || message) && <div className={`banner ${error ? 'error' : 'success'}`} role={error ? 'alert' : 'status'}><span>{error || message}</span><button aria-label="Dismiss message" onClick={() => { setError(''); setMessage(''); }}><X size={16} /></button></div>}
-      {data?.notices.map(n => <div className="notice" key={n}><CircleHelp size={16} /><span>{n}</span></div>)}
-      {page === 'launch' && <div className="launch-grid">
-        <section className="model-panel" aria-label="Model picker">
-          <div className="panel-heading"><div><h2>Your models <span className="count">{enabled.length}</span></h2><p>{freeCount ? `${freeCount} free · ` : ''}{agentCount ? `${agentCount} run through the OpenCode agent · ` : ''}from your connections and local models.</p></div><span className="small-label">{models.length} discovered</span></div>
-          <div className="filter-row"><div className="search"><Search size={17} /><input aria-label="Search models" value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a model…" />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}</div><select aria-label="Filter by provider" value={provider} onChange={e => setProvider(e.target.value)}><option value="all">All connections</option>{providers.map(p => <option key={p} value={p}>{prettyProvider(p)}</option>)}</select></div>
-          <div className="list-caption"><label><input type="checkbox" checked={readyOnly} onChange={e => setReadyOnly(e.target.checked)} /> Ready to connect</label><span>{shown.length} {shown.length === 1 ? 'model' : 'models'}</span></div>
-          {locked && <div className="locked-note"><Settings2 size={14} /> <button className="text-button" onClick={() => setPage('apps')}>Claude is connected. Change its models in Applications <ArrowUpRight size={13} /></button></div>}
-          <div className="model-list" role="radiogroup" aria-label={`Primary model for ${appName}`}>
-            {shown.slice(0, limit).map(model => <button role="radio" key={model.ref} className={`model-row ${selection.model === model.ref ? 'selected' : ''} ${!model.enabled ? 'unavailable' : ''}`} disabled={!!busy || locked || !model.enabled} onClick={() => changeSelection(model)} aria-checked={selection.model === model.ref} title={model.reason || model.ref}>
-              <span className={`model-emblem ${model.source === 'ollama' ? 'local' : ''}`} aria-hidden="true">{model.source === 'ollama' ? <Cpu size={19} /> : model.via === 'agent' ? <Bot size={17} /> : model.provider.slice(0, 1).toUpperCase()}</span>
-              <span className="model-copy"><strong>{model.name}</strong><span>{prettyProvider(model.provider)} <span className="separator">·</span> {model.enabled ? `${contextLabel(model.context)}${model.efforts.length ? ` · effort ${model.efforts.map(e => EFFORT_LABEL[e]).join('/')}` : ''}` : model.reason}</span></span>
-              <ModelTags model={model} /><span className={`radio ${selection.model === model.ref ? 'checked' : ''}`} aria-hidden="true">{selection.model === model.ref && <Check size={11} strokeWidth={3} />}</span>
-            </button>)}
-            {!shown.length && <div className="empty"><Search size={25} /><strong>{busy ? 'Reading your connections…' : 'No models here yet'}</strong><p>{query ? 'Try another name or connection.' : readyOnly ? 'Refresh connections, or browse all models to see what needs attention.' : 'Start OpenCode or your local Ollama service, then refresh.'}</p>{readyOnly && !busy && <button className="text-button" onClick={() => setReadyOnly(false)}>Browse all models <ArrowUpRight size={14} /></button>}</div>}
-            {shown.length > limit && <button className="load-more" onClick={() => setLimit(n => n + 80)}>Show more models <ChevronDown size={15} /></button>}
+      <div className="drag" />
+      <header className="header">
+        <div>
+          <div className="eyebrow"><span className="live-dot" />{discovering ? 'Discovering models…' : `Watching Ollama, LM Studio & OpenCode`}</div>
+          <h1 key={page}>{page === 'launch' ? <>Pick a model. Open something <em>good.</em></> : page === 'apps' ? <>Your apps, your <em>models.</em></> : <>Tuned just <em>right.</em></>}</h1>
+        </div>
+        <button className="ghost-button" aria-label="Refresh models and connections" onClick={() => request({ action: 'refresh' }, 'Refreshing connections', 'Models refreshed')} disabled={!!busy}><RefreshCw size={15} className={discovering ? 'spin' : ''} /> Refresh</button>
+      </header>
+      {error && <div className="alert" role="alert"><CircleAlert size={16} /><span>{error}</span><button aria-label="Dismiss" onClick={() => setError('')}><X size={15} /></button></div>}
+      {data?.notices.map(n => <div className="alert soft" key={n}><CircleAlert size={16} /><span>{n}</span></div>)}
+
+      {page === 'launch' && <div className="page launch" key="launch">
+        <section className="panel library" aria-label="Model library">
+          <div className="panel-head">
+            <div><h2>Model library</h2><p><b className="count">{readyCount}</b> ready{freeCount ? <> · <span className="hl-free">{freeCount} free</span></> : null}{agentCount ? <> · {agentCount} via OpenCode agent</> : null}</p></div>
+            <label className="ready-toggle"><Switch checked={readyOnly} onChange={setReadyOnly} label="Show ready models only" /> Ready only</label>
           </div>
-          <div className="panel-footer"><ShieldCheck size={14} /><span>Uses your existing OpenCode connections. No keys to copy.</span></div>
+          <div className="search"><Search size={16} /><input aria-label="Search models" value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${models.length} models…`} />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}<kbd>{shown.length}</kbd></div>
+          <div className="chips" role="tablist" aria-label="Filter by provider">
+            <button role="tab" aria-selected={provider === 'all'} className={provider === 'all' ? 'chip active' : 'chip'} onClick={() => setProvider('all')}><Sparkles size={13} /> All</button>
+            {providers.map(([id, info]) => <button role="tab" key={id} aria-selected={provider === id} className={provider === id ? 'chip active' : 'chip'} onClick={() => setProvider(provider === id ? 'all' : id)} title={prettyProvider(id)}><Mark name={providerMark(id, info.source)} label={prettyProvider(id)} /> {prettyProvider(id)} <span>{info.count}</span></button>)}
+          </div>
+          {locked && <button className="lock-note" onClick={() => setPage('apps')}><ShieldCheck size={14} /> Claude is connected — change its models in Applications <ArrowRight size={13} /></button>}
+          <div className="model-list" role="radiogroup" aria-label={`Primary model for ${appName}`} key={`${provider}-${readyOnly}`}>
+            {!models.length && discovering && Array.from({ length: 7 }, (_, i) => <div className="model-row skeleton" key={i} style={vars({ '--i': i })}><span className="sk-icon" /><span className="sk-lines"><span /><span /></span></div>)}
+            {shown.slice(0, limit).map((model, i) => {
+              const checked = selection.model === model.ref;
+              return <button role="radio" aria-checked={checked} key={model.ref} style={vars({ '--i': Math.min(i, 14) })} className={`model-row ${checked ? 'selected' : ''} ${!model.enabled ? 'unavailable' : ''} ${fresh.has(model.ref) ? 'fresh' : ''}`} disabled={!!busy || locked || !model.enabled} onClick={() => changeSelection(model)} title={model.reason || model.ref}>
+                <ModelMark provider={model.provider} source={model.source} id={model.ref} name={model.name} />
+                <span className="model-copy"><strong>{model.name}</strong><span>{prettyProvider(model.provider)}<i>·</i>{model.enabled ? <>{contextLabel(model.context)} context{model.efforts.length ? <><i>·</i>{model.efforts.length} effort levels</> : null}</> : model.reason}</span></span>
+                <Tags model={model} isNew={fresh.has(model.ref)} />
+                <span className="radio" aria-hidden="true"><Check size={11} strokeWidth={3.2} /></span>
+              </button>;
+            })}
+            {!shown.length && !discovering && <div className="empty"><Radar size={28} /><strong>No models here yet</strong><p>{query ? 'Try another name or provider.' : 'Pull a model in Ollama, download one in LM Studio, or connect a provider in OpenCode — it appears here automatically.'}</p>{readyOnly && <button className="link" onClick={() => setReadyOnly(false)}>Browse all models <ArrowUpRight size={13} /></button>}</div>}
+            {shown.length > limit && <button className="load-more" onClick={() => setLimit(n => n + 80)}>Show {Math.min(80, shown.length - limit)} more <ChevronDown size={14} /></button>}
+          </div>
         </section>
-        <section className="launch-panel" aria-label="Launch application">
-          <div className="launch-panel-top"><span className="eyebrow">OPEN WITH</span>
-            <div className="segmented" role="tablist" aria-label="Application">{(['claude', 'codex'] as const).map(id => <button key={id} role="tab" aria-selected={client === id} className={client === id ? 'active' : ''} disabled={!!busy} onClick={() => { setClient(id); setError(''); setMessage(''); }}>{id === 'claude' ? 'Claude' : 'Codex'}</button>)}</div>
+
+        <section className={`panel launcher ${client}`} aria-label="Launch application">
+          <div className="launcher-hero">
+            <div className="orb" aria-hidden="true"><span /><span /><span /></div>
+            <div className="launcher-top"><span className="eyebrow">Open with</span><Segmented label="Application" value={client} onChange={id => { setClient(id); setError(''); }} disabled={!!busy} options={[{ value: 'claude', label: <><Mark name="claude" /> Claude</> }, { value: 'codex', label: <><Mark name="codex" /> Codex</> }]} /></div>
+            <div className="app-id"><span className="app-icon"><Mark name={client} /></span><div><h2>{application?.name || 'Claude Desktop'}</h2><p>{application?.description || 'Chat, Code & Cowork'}</p></div></div>
+            <div className="app-state">
+              <span><span className={`status-dot ${appStatus(client)}`} />{!status ? 'Checking…' : !status.installed ? 'Not installed' : client === 'codex' ? [status.targets?.cli && 'CLI', status.targets?.app && 'App'].filter(Boolean).join(' + ') + ' found' : status.running ? 'Running' : 'Ready'}</span>
+              <span className={status?.connected ? 'ok' : ''}>{status?.recoveryNeeded ? 'Restore needed' : status?.connected ? client === 'codex' ? status.appConnected ? 'App connected' : 'Profile ready' : 'Connected' : 'Not connected'}</span>
+            </div>
           </div>
-          <div className="application"><span className={client === 'codex' ? 'codex-emblem' : 'claude-emblem'}>{client === 'codex' ? <SquareTerminal size={28} strokeWidth={1.7} /> : <Asterisk size={32} strokeWidth={1.7} />}</span><div><h2>{application?.name || 'Claude Desktop'}</h2><p>{application?.description || 'Chat, Code & Cowork'}</p></div></div>
-          <div className="app-status"><span><span className={`dot ${status?.installed ? 'online' : ''}`} /> {!status ? 'Checking app…' : !status.installed ? 'Not installed' : client === 'codex' ? [status.targets?.cli && 'CLI', status.targets?.app && 'App'].filter(Boolean).join(' & ') + ' found' : status.running ? 'App running' : 'Ready to open'}</span><span className={status?.connected ? 'connected-label' : ''}>{status?.recoveryNeeded ? 'Restore needed' : status?.connected ? client === 'codex' ? status.appConnected ? 'App connected' : 'Profile ready' : data?.gateway.routed ? 'Connected' : 'Profile applied' : 'Original connection'}</span></div>
-          <div className="selected-model"><span className="small-label">{client === 'codex' ? 'CODEX MODEL' : 'PRIMARY MODEL · SONNET'}</span><h3>{picked?.name || 'Choose a model'}</h3><p>{picked ? `${prettyProvider(picked.provider)}${picked.via === 'agent' ? ' · via OpenCode agent' : ''}` : 'Select one from the list to get started.'}</p>{picked && <div className="selection-tags"><span><Cpu size={12} />{picked.source === 'ollama' ? 'Runs locally' : picked.via === 'agent' ? 'OpenCode runs tools' : `${appName} runs tools`}</span><span>{contextLabel(picked.context)}</span></div>}
-            {picked?.enabled && <div className="effort-row"><Gauge size={14} /><EffortSelect id="primary-effort" model={picked} value={selection.effort?.sonnet} disabled={!!busy || locked} onChange={effort => setSelection(s => withEffort(s, 'sonnet', effort))} /></div>}
+          <div className="pick" key={selection.model}>
+            <span className="eyebrow">{client === 'codex' ? 'Codex model' : 'Primary · Sonnet 5'}</span>
+            {picked ? <div className="selected-model"><ModelMark size="lg" provider={picked.provider} source={picked.source} id={picked.ref} name={picked.name} /><div><h3>{picked.name}</h3><p>{prettyProvider(picked.provider)}{picked.via === 'agent' ? ' · OpenCode agent' : ''}</p></div></div> : <div className="selected-model empty-pick"><h3>Choose a model</h3><p>Pick one from the library.</p></div>}
+            {picked && <div className="facts"><span><Cpu size={12} />{picked.source !== 'opencode' ? 'On this Mac' : picked.via === 'agent' ? 'OpenCode tools' : `${appName} tools`}</span><span>{contextLabel(picked.context)} context</span>{picked.vision && <span>Vision</span>}{picked.free && <span className="hl-free">Free</span>}</div>}
+            {picked?.enabled && <div className="effort-block"><span className="field-label"><Gauge size={13} /> Effort</span><EffortPicker model={picked} value={selection.effort?.sonnet} disabled={!!busy || locked} onChange={effort => setSelection(s => withEffort(s, 'sonnet', effort))} /></div>}
+            {!picked?.enabled && picked && <p className="note warn">{picked.reason}</p>}
+            {picked?.via === 'agent' && <p className="note agent"><Bot size={14} /> Answers come from OpenCode’s agent ({data?.preferences.agent.permission === 'read-only' ? 'read-only' : data?.preferences.agent.permission === 'full' ? 'full access' : 'can edit'}); {appName}’s own tools aren’t used.</p>}
           </div>
-          {!picked?.enabled && picked && <p className="capability-note">{picked.reason}</p>}
-          {picked?.via === 'agent' && <p className="capability-note agent-note">OpenCode’s agent answers using its own tools ({data?.preferences.agent.permission === 'read-only' ? 'read-only' : data?.preferences.agent.permission === 'full' ? 'full access' : 'edits allowed'}). {appName}’s own tool calls are not used with this model.</p>}
-          {client === 'claude' && <button className="advanced-toggle" onClick={() => setPage('apps')}><Settings2 size={14} /> Claude model mappings & effort <ArrowUpRight size={14} /></button>}
-          <div className="launch-actions">
-            <label className="restart-option"><input type="checkbox" checked={restart} onChange={e => setRestart(e.target.checked)} disabled={!!busy} /><span>Restart {appName} if needed<small>Connection changes may interrupt active tasks.</small></span></label>
+          <div className="actions">
+            <label className="restart"><Switch checked={restart} onChange={setRestart} label={`Restart ${appName} if needed`} disabled={!!busy} /><span>Restart {appName} if needed<small>May interrupt active tasks</small></span></label>
             {client === 'claude' ? <>
-              <button className="launch-button" disabled={!!busy || !valid || !status?.installed || !portValid} onClick={() => locked && mappingChanged ? setPage('apps') : request({ action: 'launch', client, selection, port, restart }, 'Connecting your desktop', 'Claude opened. Its bridge profile has been applied.')}>
-                {busy.includes('Connecting') ? <LoaderCircle className="spin" size={18} /> : <ArrowUpRight size={18} />}{busy.includes('Connecting') ? 'Connecting…' : locked && mappingChanged ? 'Configure Claude' : status?.connected ? 'Open Claude' : 'Launch Claude'}</button>
-              <button className="save-button" disabled={!!busy || !valid || locked || !portValid} onClick={() => request({ action: 'save', client, selection, port }, 'Saving selection', 'Selection saved. Launch when you’re ready.')}><Check size={14} /> Save selection</button>
+              <button className="primary" disabled={!!busy || !valid || !status?.installed || !portValid} onClick={() => locked && mappingChanged ? setPage('apps') : request({ action: 'launch', client, selection, port, restart }, 'Connecting Claude', 'Claude is open on your model')}>
+                {busy.includes('Connecting') ? <LoaderCircle className="spin" size={17} /> : <ArrowUpRight size={17} />}{busy.includes('Connecting') ? 'Connecting…' : locked && mappingChanged ? 'Configure Claude' : status?.connected ? 'Open Claude' : 'Launch Claude'}</button>
+              <button className="secondary" disabled={!!busy || !valid || locked || !portValid} onClick={() => request({ action: 'save', client, selection, port }, 'Saving selection', 'Selection saved')}><Check size={14} /> Save for later</button>
             </> : <>
-              <button className="launch-button" disabled={!!busy || !valid || !status?.targets?.cli || !portValid} onClick={() => launchCodex('cli')}>{busy.includes('Terminal') ? <LoaderCircle className="spin" size={18} /> : <SquareTerminal size={18} />}{busy.includes('Terminal') ? 'Opening…' : 'Launch Codex CLI'}</button>
-              <button className="save-button" disabled={!!busy || !valid || !status?.targets?.app || !portValid} onClick={() => launchCodex('app')}>{busy.includes('Codex app') ? <LoaderCircle className="spin" size={14} /> : <ArrowUpRight size={14} />} {status?.appConnected && !codexChanged ? 'Open Codex app' : 'Use in Codex app (restarts it)'}</button>
+              <button className="primary" disabled={!!busy || !valid || !status?.targets?.cli || !portValid} onClick={() => launchCodex('cli')}>{busy.includes('Terminal') ? <LoaderCircle className="spin" size={17} /> : <SquareTerminal size={17} />}{busy.includes('Terminal') ? 'Opening…' : 'Launch Codex CLI'}</button>
+              <button className="secondary" disabled={!!busy || !valid || !status?.targets?.app || !portValid} onClick={() => launchCodex('app')}>{busy.includes('Codex app') ? <LoaderCircle className="spin" size={14} /> : <AppWindow size={14} />} {status?.appConnected && !codexChanged ? 'Open Codex app' : 'Use in Codex app'}</button>
             </>}
+            <button className="link center" disabled={!!busy || !(status?.connected || status?.recoveryNeeded)} onClick={() => request({ action: 'disconnect', client, restart }, `Restoring ${appName}`, `${appName} restored`)}><Undo2 size={13} /> {client === 'codex' ? 'Disconnect Codex' : 'Restore previous connection'}</button>
           </div>
-          <div className="restore-area"><button disabled={!!busy || !(status?.connected || status?.recoveryNeeded)} onClick={() => request({ action: 'disconnect', client, restart }, `Restoring ${appName}`, `${appName} restored to its previous connection.`)}><Undo2 size={14} /> {client === 'codex' ? 'Disconnect Codex' : 'Restore previous connection'}</button><p>Your previous setup is saved before connecting.</p></div>
         </section>
       </div>}
-      {page === 'apps' && <section className="applications-page"><div className="section-title"><h2>Apps</h2><p>Your model choices and effort levels, inside the applications you use.</p></div>
-        <article className="mapping-card" aria-label="Claude model configuration"><div className="mapping-header"><span className="claude-emblem"><Asterisk size={34} /></span><div><h2>Claude</h2><p>Claude shows its familiar model names. Choose which model actually answers each one, and optionally pin its effort.</p></div><button className="outline-button" disabled={!!busy || !claudeValid || !claude?.installed || !!data?.gateway.active || !portValid} onClick={() => request({ action: 'apply', client: 'claude', selection: claudeSelection, port, restart: true }, 'Applying Claude models', 'Models applied. Claude restarted. Your original connection remains saved.')}><RefreshCw size={15} className={busy.includes('Applying Claude') ? 'spin' : ''} />{busy.includes('Applying Claude') ? 'Applying…' : mappingChanged ? 'Apply & Restart Claude' : 'Restart Claude'}</button></div>
-          <div className="mapping-fields">{mappingRows.map(key => {
+
+      {page === 'apps' && <div className="page apps" key="apps">
+        <article className="panel integration" aria-label="Claude model configuration">
+          <header className="integration-head"><span className="app-icon lg"><Mark name="claude" /></span><div><h2>Claude</h2><p>Claude keeps its own model names. Choose what really answers each one, and pin effort if you like.</p></div>
+            <button className="primary compact" disabled={!!busy || !claudeValid || !claude?.installed || !!data?.gateway.active || !portValid} onClick={() => request({ action: 'apply', client: 'claude', selection: claudeSelection, port, restart: true }, 'Applying Claude models', 'Models applied — Claude restarted')}><RefreshCw size={14} className={busy.includes('Applying Claude') ? 'spin' : ''} />{busy.includes('Applying Claude') ? 'Applying…' : mappingChanged ? 'Apply & restart' : 'Restart Claude'}</button></header>
+          <div className="mappings">{mappingRows.map((key, i) => {
             const slot = CLAUDE_SLOTS.find(slot => slot.key === key)!;
-            const ref = mappingRef(claudeSelection, key);
+            const ref = mappingRef(claudeSelection, key); const model = find(ref);
             const applied = data?.savedRoutes.find(route => route.slot === key);
             const same = applied?.ref === ref && applied?.effort === claudeSelection.effort?.[key];
-            return <div className="mapping-row" key={key}><label htmlFor={`model-${key}`}>{slot.label}</label><ArrowUpRight size={18} aria-hidden="true" /><div><div className="mapping-controls"><select id={`model-${key}`} aria-label={`${slot.label} model`} value={ref} disabled={!!busy} onChange={event => { const value = event.target.value; setSelection(s => { const next = { ...s, [key === 'sonnet' ? 'model' : key]: value }; return find(value)?.efforts.includes(s.effort?.[key] as Effort) ? next : withEffort(next, key, ''); }, 'claude'); setMessage(''); }}>{modelOptions(ref)}</select><EffortSelect id={`effort-${key}`} model={find(ref)} value={claudeSelection.effort?.[key]} disabled={!!busy} onChange={effort => { setSelection(s => withEffort(s, key, effort), 'claude'); setMessage(''); }} /></div><span className={same ? 'mapping-applied' : 'mapping-pending'}>{same ? 'Applied' : 'Applies after restart'}{find(ref)?.via === 'agent' ? ' · runs in the OpenCode agent' : ''}</span></div></div>;
+            return <div className="mapping" key={key} style={vars({ '--i': i })}>
+              <div className="mapping-name"><span className="claude-chip"><Mark name="claude" /></span><div><label htmlFor={`model-${key}`}>{slot.label}</label><span className={same ? 'state ok' : 'state pending'}>{same ? 'Applied' : 'Pending restart'}</span></div></div>
+              <ArrowRight size={16} className="mapping-arrow" aria-hidden="true" />
+              <div className="mapping-pick">{model && <ModelMark provider={model.provider} source={model.source} id={model.ref} name={model.name} />}<div className="select"><select id={`model-${key}`} aria-label={`${slot.label} model`} value={ref} disabled={!!busy} onChange={event => { const value = event.target.value; setSelection(s => { const next = { ...s, [key === 'sonnet' ? 'model' : key]: value }; return find(value)?.efforts.includes(s.effort?.[key] as Effort) ? next : withEffort(next, key, ''); }, 'claude'); }}>{modelOptions(ref)}</select><ChevronDown size={14} /></div></div>
+              <EffortPicker size="sm" model={model} value={claudeSelection.effort?.[key]} disabled={!!busy} onChange={effort => setSelection(s => withEffort(s, key, effort), 'claude')} />
+            </div>;
           })}</div>
-          <div className="auto-mode-row"><div><label htmlFor="claude-auto-mode">Enable auto mode</label><p>Let Claude decide when to ask before making changes.</p><small>Availability depends on the selected model and Claude version.</small></div><input id="claude-auto-mode" type="checkbox" role="switch" aria-checked={claudeSelection.autoMode === true} checked={claudeSelection.autoMode === true} disabled={!!busy} onChange={event => { setSelection(s => ({ ...s, autoMode: event.target.checked }), 'claude'); setMessage(''); }} /></div>
-          <div className="mapping-footer"><span>{data?.gateway.active ? 'Wait for the active request to finish before restarting.' : 'Restarting Claude may interrupt tasks. Changes stay here until you apply them.'}</span><button className="text-button" disabled={!!busy || !claudeLocked} onClick={() => request({ action: 'disconnect', client: 'claude', restart: true }, 'Restoring Claude', 'Previous Claude connection restored.')}><Undo2 size={14} /> Disconnect Claude</button></div>
+          <div className="integration-row"><div><strong>Auto mode</strong><p>Let Claude decide when to ask before making changes. Depends on model and Claude version.</p></div><Switch checked={claudeSelection.autoMode === true} disabled={!!busy} label="Enable auto mode" onChange={value => setSelection(s => ({ ...s, autoMode: value }), 'claude')} /></div>
+          <footer className="integration-foot"><span>{data?.gateway.active ? 'Wait for the active request to finish before restarting.' : 'Changes stay here until you apply them. Restarting may interrupt tasks.'}</span><button className="link" disabled={!!busy || !claudeLocked} onClick={() => request({ action: 'disconnect', client: 'claude', restart: true }, 'Restoring Claude', 'Claude restored')}><Undo2 size={13} /> Disconnect</button></footer>
         </article>
-        <article className="mapping-card" aria-label="Codex model configuration"><div className="mapping-header"><span className="codex-emblem"><SquareTerminal size={30} /></span><div><h2>Codex</h2><p>Like <code>ollama launch codex</code>: a dedicated <code>opencode-bridge</code> profile for the CLI, or a reversible model selection for the Codex app.</p></div><button className="outline-button" disabled={!!busy || !codexValid || !codex?.installed || !portValid} onClick={() => launchCodex('cli')}><SquareTerminal size={15} /> Launch Codex CLI</button></div>
-          <div className="mapping-fields"><div className="mapping-row"><label htmlFor="codex-model">Model</label><ArrowUpRight size={18} aria-hidden="true" /><div><div className="mapping-controls"><select id="codex-model" aria-label="Codex model" value={selections.codex.model} disabled={!!busy} onChange={event => { const value = event.target.value; setSelection(s => ({ ...s, model: value, effort: find(value)?.efforts.includes(s.effort?.sonnet as Effort) ? s.effort : undefined }), 'codex'); setMessage(''); }}>{modelOptions(selections.codex.model)}</select><EffortSelect id="codex-effort" model={find(selections.codex.model)} value={selections.codex.effort?.sonnet} disabled={!!busy} onChange={effort => { setSelection(s => withEffort(s, 'sonnet', effort), 'codex'); setMessage(''); }} /></div><span className={codexChanged ? 'mapping-pending' : 'mapping-applied'}>{codexChanged ? 'Applies on next launch' : `Applied${codex?.appConnected ? ' · Codex app connected' : ' · CLI profile ready'}`}{find(selections.codex.model)?.via === 'agent' ? ' · runs in the OpenCode agent' : ''}</span></div></div></div>
-          <div className="codex-targets"><span><SquareTerminal size={14} /> CLI {codex?.targets?.cli ? <strong>found</strong> : 'not found — npm install -g @openai/codex'}</span><span><Monitor size={14} /> App {codex?.targets?.app ? <strong>found</strong> : 'not installed'}</span><code>codex --profile opencode-bridge</code></div>
-          <div className="mapping-footer"><span>Using the Codex app changes its selected model in ~/.codex/config.toml and restarts it. Disconnect restores your previous selection exactly.</span><div className="footer-actions"><button className="text-button" disabled={!!busy || !codexValid || !codex?.targets?.app} onClick={() => launchCodex('app')}><ArrowUpRight size={14} /> Use in Codex app</button><button className="text-button" disabled={!!busy || !(codex?.connected || codex?.recoveryNeeded)} onClick={() => request({ action: 'disconnect', client: 'codex', restart: true }, 'Restoring Codex', 'Codex restored to its previous model.')}><Undo2 size={14} /> Disconnect Codex</button></div></div>
+        <article className="panel integration" aria-label="Codex model configuration">
+          <header className="integration-head"><span className="app-icon lg"><Mark name="codex" /></span><div><h2>Codex</h2><p>Works like <code>ollama launch codex</code>: a private <code>opencode-bridge</code> profile for the CLI, or a reversible pick for the Codex app.</p></div>
+            <button className="primary compact" disabled={!!busy || !codexValid || !codex?.targets?.cli || !portValid} onClick={() => launchCodex('cli')}><SquareTerminal size={14} /> Launch CLI</button></header>
+          <div className="mappings"><div className="mapping">
+            <div className="mapping-name"><span className="claude-chip"><Mark name="codex" /></span><div><label htmlFor="codex-model">Model</label><span className={codexChanged ? 'state pending' : 'state ok'}>{codexChanged ? 'Next launch' : codex?.appConnected ? 'App connected' : 'Profile ready'}</span></div></div>
+            <ArrowRight size={16} className="mapping-arrow" aria-hidden="true" />
+            <div className="mapping-pick">{find(selections.codex.model) && <ModelMark provider={find(selections.codex.model)!.provider} source={find(selections.codex.model)!.source} id={selections.codex.model} name={find(selections.codex.model)!.name} />}<div className="select"><select id="codex-model" aria-label="Codex model" value={selections.codex.model} disabled={!!busy} onChange={event => { const value = event.target.value; setSelection(s => ({ ...s, model: value, effort: find(value)?.efforts.includes(s.effort?.sonnet as Effort) ? s.effort : undefined }), 'codex'); }}>{modelOptions(selections.codex.model)}</select><ChevronDown size={14} /></div></div>
+            <EffortPicker size="sm" model={find(selections.codex.model)} value={selections.codex.effort?.sonnet} disabled={!!busy} onChange={effort => setSelection(s => withEffort(s, 'sonnet', effort), 'codex')} />
+          </div></div>
+          <div className="targets"><span className={codex?.targets?.cli ? 'ok' : ''}><SquareTerminal size={14} /> CLI {codex?.targets?.cli ? 'found' : 'missing · npm i -g @openai/codex'}</span><span className={codex?.targets?.app ? 'ok' : ''}><AppWindow size={14} /> App {codex?.targets?.app ? 'found' : 'not installed'}</span><code>codex --profile opencode-bridge</code></div>
+          <footer className="integration-foot"><span>The Codex app option edits its selected model in ~/.codex/config.toml and restarts it. Disconnect restores it exactly.</span><div className="foot-actions"><button className="link" disabled={!!busy || !codexValid || !codex?.targets?.app} onClick={() => launchCodex('app')}><AppWindow size={13} /> Use in app</button><button className="link" disabled={!!busy || !(codex?.connected || codex?.recoveryNeeded)} onClick={() => request({ action: 'disconnect', client: 'codex', restart: true }, 'Restoring Codex', 'Codex restored')}><Undo2 size={13} /> Disconnect</button></div></footer>
         </article>
-        {agentCount > 0 && <div className="notice zen-note"><Bot size={16} /><span>Free OpenCode Zen models (and logins OpenCode handles itself) run through a private OpenCode server, so they stay “within OpenCode” as its free tier requires. OpenCode uses its own tools under the policy set in Settings; app-side tools such as Claude Code’s are not used with these models.</span></div>}
-      </section>}
-      {page === 'settings' && <section className="settings-page"><div className="section-title"><h2>Connection settings</h2><p>A small set of controls for your local bridge.</p></div>
-        <div className="settings-card"><div><h3>Gateway port</h3><p>The local address Claude and Codex use. Changing it requires disconnecting Claude first.</p></div><input aria-label="Gateway port" aria-invalid={!portValid} type="number" min="1024" max="65535" value={Number.isFinite(port) ? port : ''} disabled={claudeLocked || !!busy} onChange={e => setPort(e.target.valueAsNumber)} /><button className="save-button" disabled={claudeLocked || !!busy || !claudeValid || !portValid} onClick={() => request({ action: 'save', client: 'claude', selection: claudeSelection, port }, 'Saving settings', 'Settings saved. They apply on your next launch.')}>Save port</button></div>
-        <div className="settings-card agent-settings"><div><h3>OpenCode agent</h3><p>Used by free Zen models and other models that run inside OpenCode. It works in the app’s project folder when one is known (Claude Code, Codex), otherwise in this workspace.</p>
-          <div className="agent-fields"><label htmlFor="agent-workspace">Workspace folder<input id="agent-workspace" value={workspace} spellCheck={false} disabled={!!busy} onChange={e => setWorkspace(e.target.value)} aria-invalid={!workspace.startsWith('/')} /></label>
-            <fieldset><legend>Tool permissions</legend>{PERMISSIONS.map(option => <label key={option.value} className="permission-option"><input type="radio" name="agent-permission" value={option.value} checked={permission === option.value} disabled={!!busy} onChange={() => setPermission(option.value)} /><span><strong>{option.label}</strong><small>{option.detail}</small></span></label>)}</fieldset></div></div>
-          <button className="save-button" disabled={!!busy || !workspace.startsWith('/') || (workspace === data?.preferences.agent.workspace && permission === data?.preferences.agent.permission)} onClick={() => request({ action: 'settings', agent: { workspace, permission } }, 'Saving agent settings', data?.gateway.ready ? 'Agent settings saved. The gateway restarted to apply them.' : 'Agent settings saved.')}>Save agent settings</button></div>
-        <div className="settings-card"><div><h3>App data & recovery</h3><p>Saved selections, connection recovery, and gateway metadata logs.</p></div><button className="outline-button" onClick={() => request({ action: 'open-state' })}><FolderOpen size={15} /> Open folder</button></div>
-        <div className="settings-card"><div><h3>Background gateway</h3><p>{data?.gateway.ready ? `Running on port ${data.gateway.port} · ${data.gateway.routed} requests routed. Closing the window keeps apps connected.` : 'Starts automatically when you launch an application.'}</p></div><button className="outline-button" disabled={!!busy || !data?.gateway.ready || claudeLocked || !!codex?.connected} onClick={() => request({ action: 'stop' }, 'Stopping gateway', 'Background gateway stopped.')}><Activity size={15} /> Stop gateway</button></div>
-        <div className="settings-card"><div><h3>Disconnect & Quit</h3><p>Restore Claude and Codex to their previous connections, stop the gateway, and exit Bridge.</p></div><button className="outline-button" disabled={!!busy || !!data?.gateway.active} onClick={() => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting')}><Undo2 size={15} /> Disconnect & Quit</button></div>
-        <div className="settings-footnote"><ShieldCheck size={19} /><p>The red close button hides the window; it does not disconnect your apps. Quit from the app menu to choose Disconnect & Quit or Keep Connected & Quit.</p></div></section>}
-      <footer className="main-footer"><span><BridgeMark small /> A bridge from your models to your desktop.</span><span>{busy ? <><LoaderCircle size={12} className="spin" />{busy}</> : <><span className={`dot ${data?.gateway.ready ? 'online' : ''}`} />{data?.gateway.ready ? `${data.gateway.routed} requests routed` : 'Ready when you are'}</>}</span></footer>
+        {agentCount > 0 && <div className="callout"><Bot size={18} /><p><b>Free OpenCode models run inside OpenCode.</b> OpenCode allows its free tier only within OpenCode, so Bridge uses a private OpenCode agent for them. It runs OpenCode’s own tools under your Settings policy, and app-side tools like Claude Code’s aren’t used.</p></div>}
+      </div>}
+
+      {page === 'settings' && <div className="page settings" key="settings">
+        <section className="panel setting"><div className="setting-copy"><h3>Appearance</h3><p>Match macOS, or keep Bridge light or dark.</p></div>
+          <div className="theme-cards" role="radiogroup" aria-label="Theme">{(['system', 'light', 'dark'] as const).map(t => <button key={t} role="radio" aria-checked={theme === t} className={`theme-card ${t} ${theme === t ? 'active' : ''}`} onClick={() => setTheme(t)}><span className="preview"><span /><span /><span /></span><span className="theme-name">{t === 'system' ? <Monitor size={13} /> : t === 'light' ? <Sun size={13} /> : <Moon size={13} />}{t[0].toUpperCase() + t.slice(1)}</span></button>)}</div></section>
+        <section className="panel setting agent-setting"><div className="setting-copy"><h3><Bot size={16} /> OpenCode agent</h3><p>Used by free Zen models and anything else that runs inside OpenCode. It works in the app’s project folder when known, otherwise here.</p></div>
+          <div className="agent-form">
+            <label className="field"><span className="field-label">Workspace folder</span><input value={workspace} spellCheck={false} disabled={!!busy} onChange={e => setWorkspace(e.target.value)} aria-invalid={!workspace.startsWith('/')} /></label>
+            <div className="perm-grid" role="radiogroup" aria-label="Tool permissions">{PERMISSIONS.map(option => <button key={option.value} role="radio" aria-checked={permission === option.value} className={`perm ${permission === option.value ? 'active' : ''}`} disabled={!!busy} onClick={() => setPermission(option.value)}><strong>{option.label}</strong><small>{option.detail}</small></button>)}</div>
+            <button className="primary compact self-end" disabled={!!busy || !workspace.startsWith('/') || (workspace === data?.preferences.agent.workspace && permission === data?.preferences.agent.permission)} onClick={() => request({ action: 'settings', agent: { workspace, permission } }, 'Saving agent settings', data?.gateway.ready ? 'Agent settings saved — gateway restarted' : 'Agent settings saved')}>Save agent settings</button>
+          </div></section>
+        <section className="panel setting"><div className="setting-copy"><h3>Gateway port</h3><p>The local address Claude and Codex use. Disconnect Claude to change it.</p></div><div className="inline-form"><input className="port" aria-label="Gateway port" aria-invalid={!portValid} type="number" min="1024" max="65535" value={Number.isFinite(port) ? port : ''} disabled={claudeLocked || !!busy} onChange={e => setPort(e.target.valueAsNumber)} /><button className="secondary" disabled={claudeLocked || !!busy || !claudeValid || !portValid} onClick={() => request({ action: 'save', client: 'claude', selection: claudeSelection, port }, 'Saving settings', 'Port saved — applies on next launch')}>Save</button></div></section>
+        <section className="panel setting"><div className="setting-copy"><h3>Background gateway</h3><p>{data?.gateway.ready ? `Running on port ${data.gateway.port} · ${data.gateway.routed} requests routed. Closing the window keeps apps connected.` : 'Starts automatically when you launch an app.'}</p></div><button className="secondary" disabled={!!busy || !data?.gateway.ready || claudeLocked || !!codex?.connected} onClick={() => request({ action: 'stop' }, 'Stopping gateway', 'Gateway stopped')}><Activity size={14} /> Stop</button></section>
+        <section className="panel setting"><div className="setting-copy"><h3>App data & recovery</h3><p>Saved selections, recovery journals and gateway logs.</p></div><button className="secondary" onClick={() => request({ action: 'open-state' })}><FolderOpen size={14} /> Open folder</button></section>
+        <section className="panel setting danger"><div className="setting-copy"><h3>Disconnect & Quit</h3><p>Restore Claude and Codex, stop the gateway, and exit Bridge. Closing the window only hides it.</p></div><button className="secondary danger" disabled={!!busy || !!data?.gateway.active} onClick={() => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting')}><LogOut size={14} /> Disconnect & Quit</button></section>
+      </div>}
+      <footer className="statusbar"><span>{busy ? <><LoaderCircle size={12} className="spin" /> {busy}</> : <><span className={`status-dot ${data?.gateway.ready ? 'on' : 'idle'}`} />{data?.gateway.ready ? `${data.gateway.routed} requests routed${data.gateway.active ? ` · ${data.gateway.active} active` : ''}` : 'Ready when you are'}</>}</span><span>{models.length} models · {providers.length} sources</span></footer>
     </main>
+    <div className="toasts" aria-live="polite">{toasts.map(t => <div key={t.id} className={`toast ${t.tone}`}><span className="toast-icon">{t.icon || (t.tone === 'success' ? <Check size={15} /> : t.tone === 'error' ? <CircleAlert size={15} /> : <Sparkles size={15} />)}</span><div><strong>{t.title}</strong>{t.body && <p>{t.body}</p>}</div><button aria-label="Dismiss" onClick={() => setToasts(list => list.filter(x => x.id !== t.id))}><X size={13} /></button></div>)}</div>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<App />);

@@ -83,7 +83,7 @@ export async function credentials(route: Route): Promise<string | undefined> {
 // OpenCode's own agent can run every model OpenCode can run, including its
 // free tier (restricted to OpenCode itself), OAuth logins, and Responses/Google SDKs.
 export function agentEligible(model: Wire): boolean {
-  return typeof model.providerID === 'string' && model.providerID !== 'ollama-local' && model._bridgeSource !== 'ollama' && model.status !== 'deprecated';
+  return typeof model.providerID === 'string' && model.providerID !== 'ollama-local' && !model._bridgeSource && model.status !== 'deprecated';
 }
 export interface RouteOptions { via?: 'direct' | 'agent'; effort?: Effort }
 export async function makeRoute(ref: string, slot: Slot | 'codex', models?: Map<string, Wire>, opts: RouteOptions = {}): Promise<Route> {
