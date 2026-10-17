@@ -11,7 +11,7 @@ import { validateConfig } from './config.js';
 import { routePresentation } from './slots.js';
 
 export const SERVICE = 'opencode-claude-bridge';
-export const VERSION = '0.4.1';
+export const VERSION = '0.4.2';
 export interface Gateway {
   server: Server;
   url: string;

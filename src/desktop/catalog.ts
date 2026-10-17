@@ -6,6 +6,7 @@ import type { ModelItem } from './contracts.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { homedir } from 'node:os';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const exec = promisify(execFile);
@@ -22,7 +23,20 @@ const lmStudioMeta = (key: string, model: Wire, serverUp: boolean): Wire => ({
 });
 // LM Studio: the REST API when its server runs, otherwise the `lms` CLI's offline listing.
 // Only lists downloaded models; never loads or downloads one.
-export async function discoverLmStudio(fetcher: typeof fetch = fetch, list: () => Promise<Wire[]> = async () => JSON.parse((await exec(lmsBin(), ['ls', '--json'], { timeout: 8000, maxBuffer: 8 * 1024 * 1024 })).stdout)): Promise<Map<string, Wire>> {
+// Downloaded models on disk (<root>/<publisher>/<model>). Read directly: the `lms`
+// CLI boots LM Studio as a background service, which browsing must never do.
+export async function lmStudioOnDisk(root = join(homedir(), '.lmstudio', 'models')): Promise<Wire[]> {
+  const entries: Wire[] = [];
+  for (const publisher of await readdir(root, { withFileTypes: true })) {
+    if (!publisher.isDirectory() || publisher.name.startsWith('.')) continue;
+    for (const model of await readdir(join(root, publisher.name), { withFileTypes: true })) {
+      if (!model.isDirectory() || model.name.startsWith('.') || /embed/i.test(model.name)) continue;
+      entries.push({ key: model.name, display_name: model.name, type: 'llm', offline: true });
+    }
+  }
+  return entries;
+}
+export async function discoverLmStudio(fetcher: typeof fetch = fetch, list: () => Promise<Wire[]> = () => lmStudioOnDisk()): Promise<Map<string, Wire>> {
   const models = new Map<string, Wire>();
   let entries: Wire[] = []; let serverUp = false;
   try {
@@ -33,7 +47,7 @@ export async function discoverLmStudio(fetcher: typeof fetch = fetch, list: () =
   for (const model of entries.slice(0, 200)) {
     const key = model.key || model.modelKey;
     if (typeof key !== 'string' || model.type !== 'llm') continue;
-    models.set(`lmstudio/${key}`, lmStudioMeta(key, model, serverUp));
+    models.set(`lmstudio/${key}`, { ...lmStudioMeta(key, model, serverUp), ...(model.offline ? { _offline: true } : {}) });
   }
   return models;
 }
@@ -100,7 +114,8 @@ export async function discoverCatalog(reuse?: Map<string, Wire>): Promise<Catalo
     // Otherwise run the model inside OpenCode's agent, which OpenCode supports for
     // its free tier, OAuth logins and every SDK it ships.
     let direct: string | undefined;
-    if (meta._bridgeSource === 'lmstudio' && !meta.capabilities?.toolcall) reason = 'LM Studio reports this model is not trained for tool use.';
+    if (meta._offline) reason = 'LM Studio isn’t running. Open LM Studio and turn on its local server to use this model — it will appear here automatically.';
+    else if (meta._bridgeSource === 'lmstudio' && !meta.capabilities?.toolcall) reason = 'LM Studio reports this model is not trained for tool use.';
     else if (!meta.capabilities?.toolcall) reason = 'Desktop integration requires tool-call support.';
     else if (protocol === 'unsupported') direct = 'This provider protocol needs an adapter.';
     else if (meta.providerID === 'opencode-go') direct = 'OpenCode Go integration is not enabled.';

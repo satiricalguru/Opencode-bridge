@@ -2,6 +2,10 @@
 
 Updated 17 October 2026: `opencode-claude-bridge` 0.2.0. See [VERIFICATION.md](VERIFICATION.md) for live results.
 
+## 0.4.2
+
+- **Fix: opening Bridge launched LM Studio.** When LM Studio's server was off, discovery ran `lms ls`, and that CLI boots LM Studio as a background service. Downloaded models are now read from `~/.lmstudio/models` on disk, and LM Studio is started only when you launch with an LM Studio model. Offline LM Studio models are listed with a hint, and they become usable automatically once its server is on. Verified: Bridge started and ran discovery while LM Studio stayed closed.
+
 ## 0.4.1
 
 - **Fix: agent models couldn't edit files.** The OpenCode agent defaulted to Read only, so Codex and Claude edits on free models were declined. The default is now **Edit & run**: edits and commands are allowed inside the project folder, and anything outside it is still declined. Blocked actions now say exactly where to change the policy, a launchpad **Allow edits** button switches it in one click, and the tool note reads `blocked: …` instead of `not completed`. Verified live: DeepSeek V4.1 Flash Free fixed `calc.py` through the bridge.

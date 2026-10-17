@@ -255,7 +255,7 @@ function App() {
         <div className={`gateway-pill ${data?.gateway.ready ? 'live' : ''}`}><span className="pulse" /><span>{data?.gateway.ready ? <>Gateway <b>:{data.gateway.port}</b></> : 'Gateway idle'}</span>{data?.gateway.ready && <span className="routed">{data.gateway.routed}</span>}</div>
         <Segmented size="sm" label="Appearance" value={theme} onChange={setTheme} options={[{ value: 'system', label: <Monitor size={13} />, title: 'Match system' }, { value: 'light', label: <Sun size={13} />, title: 'Light' }, { value: 'dark', label: <Moon size={13} />, title: 'Dark' }]} />
         <button className="quit" disabled={!!busy || !!data?.gateway.active} onClick={() => setConfirm({ title: 'Disconnect and quit Bridge?', body: 'Claude and Codex go back to their previous models, connected apps restart, and the gateway stops.', action: 'Disconnect & Quit', danger: true, run: () => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting') })}><LogOut size={14} /> Disconnect & Quit</button>
-        {data?.update ? <button className="update-pill" onClick={() => request({ action: 'open-release' })}><Sparkles size={13} /> Update to v{data.update.version}</button> : <span className="version">v{data?.version || '0.4.1'}</span>}
+        {data?.update ? <button className="update-pill" onClick={() => request({ action: 'open-release' })}><Sparkles size={13} /> Update to v{data.update.version}</button> : <span className="version">v{data?.version || '0.4.2'}</span>}
       </div>
     </aside>
     <main>

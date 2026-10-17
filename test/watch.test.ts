@@ -19,6 +19,13 @@ test('LM Studio discovery uses the REST API when up, the CLI listing when down, 
   assert.equal(qwen.capabilities.toolcall, true); assert.equal(qwen.limit.context, 131072);
   const down = await discoverLmStudio(async () => { throw new Error('ECONNREFUSED'); }, async () => [{ type: 'llm', modelKey: 'gemma', displayName: 'Gemma', maxContextLength: 8192, trainedForToolUse: true, vision: true }]);
   assert.equal(down.get('lmstudio/gemma')?.capabilities.input.image, true);
+  // With the server off, models come from disk (never the `lms` CLI, which boots LM Studio).
+  const root = await mkdtemp(join(tmpdir(), 'bridge-lms-'));
+  await mkdir(join(root, 'qwen', 'qwen3-coder-30b'), { recursive: true }); await mkdir(join(root, 'nomic-ai', 'nomic-embed-text'), { recursive: true });
+  const { lmStudioOnDisk } = await import('../src/desktop/catalog.js');
+  const offline = await discoverLmStudio(async () => { throw new Error('ECONNREFUSED'); }, () => lmStudioOnDisk(root));
+  assert.deepEqual([...offline.keys()], ['lmstudio/qwen3-coder-30b']); assert.equal(offline.get('lmstudio/qwen3-coder-30b')?._offline, true);
+  await rm(root, { recursive: true, force: true });
   assert.equal((await discoverLmStudio(async () => { throw new Error('down'); }, async () => { throw new Error('no lms'); })).size, 0);
 });
 test('LM Studio preparation starts the server when needed and loads only unloaded models', async () => {
