@@ -12,7 +12,12 @@ import { BridgeError, isObject, type AgentPermission, type OpenCodeAgentSettings
 // answer plus short notes about the tools OpenCode used. Nothing here alters
 // how OpenCode identifies itself to its providers.
 
-export const defaultAgentSettings = (): OpenCodeAgentSettings => ({ workspace: join(homedir(), 'OpenCode Bridge'), permission: 'read-only' });
+// Edits and commands are allowed inside the project folder; anything outside it is declined.
+export const defaultAgentSettings = (): OpenCodeAgentSettings => ({ workspace: join(homedir(), 'OpenCode Bridge'), permission: 'workspace-write' });
+const POLICY_HINT: Record<string, string> = { 'read-only': 'Bridge’s OpenCode agent is set to Read only — allow it in OpenCode Bridge → Settings → OpenCode agent → Edit & run', 'workspace-write': 'outside the project folder — allow it in OpenCode Bridge → Settings → OpenCode agent → Full access', full: 'declined by OpenCode Bridge' };
+export function blockedReason(policy: AgentPermission, permission: string): string {
+  return ['doom_loop', 'question'].includes(permission) ? 'OpenCode Bridge cannot answer interactive prompts' : permission === 'external_directory' ? POLICY_HINT['workspace-write'] : POLICY_HINT[policy];
+}
 const READ_ONLY = new Set(['read', 'glob', 'grep', 'list', 'lsp', 'codesearch', 'webfetch', 'websearch', 'todoread', 'todowrite', 'skill']);
 const WRITE = new Set(['edit', 'write', 'patch', 'apply_patch', 'multiedit', 'bash', 'task']);
 export function permissionReply(policy: AgentPermission, permission: string): 'once' | 'reject' {
@@ -186,6 +191,7 @@ export class AgentEngine {
       const done = emitted.get(part.id) || 0;
       if (full.length > done) { emitted.set(part.id, full.length); await say(full.slice(done), part.id); }
     };
+    const rejected = new Map<string, string>();
     const early = new Map<string, Wire>();
     const handlePart = async (part: Wire) => {
       if (roles.get(part.messageID) !== 'assistant') return;
@@ -193,7 +199,8 @@ export class AgentEngine {
       if (part.type === 'tool' && ['completed', 'error'].includes(part.state?.status) && !noted.has(part.id)) {
         noted.add(part.id);
         const title = typeof part.state?.title === 'string' && part.state.title ? ` · ${part.state.title.replace(/\s+/g, ' ').slice(0, 160)}` : '';
-        await say(`> ⚙︎ ${part.tool}${title}${part.state.status === 'error' ? ' — not completed' : ''}\n\n`, part.id);
+        const blocked = part.callID && rejected.get(part.callID);
+        await say(`> ⚙︎ ${part.tool}${title}${part.state.status === 'error' ? blocked ? ` — blocked: ${blocked}` : ' — not completed' : ''}\n\n`, part.id);
       }
     };
     // Parts and deltas can arrive before their message's role is known.
@@ -244,7 +251,10 @@ export class AgentEngine {
           }
           case 'permission.asked': {
             const reply = permissionReply(settings.permission, String(p.permission));
-            await this.call(server, `/permission/${p.id}/reply`, directory, { method: 'POST', body: JSON.stringify(reply === 'reject' ? { reply, message: `OpenCode Bridge policy (${settings.permission}) does not allow ${p.permission}. Continue without it.` } : { reply }) }, signal);
+            const reason = blockedReason(settings.permission, String(p.permission));
+            if (reply === 'reject' && typeof p.tool?.callID === 'string') rejected.set(p.tool.callID, reason);
+            // The model is told why and where the user can change it, so it can say so.
+            await this.call(server, `/permission/${p.id}/reply`, directory, { method: 'POST', body: JSON.stringify(reply === 'reject' ? { reply, message: `Not allowed: ${reason}. Tell the user this exactly, then continue without it.` } : { reply }) }, signal);
             break;
           }
           case 'question.asked': {

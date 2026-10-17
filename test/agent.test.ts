@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Anthropic from '@anthropic-ai/sdk';
-import { AgentEngine, agentDirectory, agentPrompt, permissionReply, type OpenCodeServer } from '../src/agent.js';
+import { AgentEngine, agentDirectory, agentPrompt, blockedReason, defaultAgentSettings, permissionReply, type OpenCodeServer } from '../src/agent.js';
 import { startGateway } from '../src/gateway.js';
 import { config } from './helpers.js';
 import type { Route } from '../src/types.js';
@@ -36,7 +36,8 @@ const reply = (session: string, text: string) => [
   // A delta can precede both its part and message metadata.
   { type: 'message.part.delta', properties: { sessionID: session, messageID: 'm_a', partID: 'p_text', field: 'text', delta: text.slice(0, 3) } },
   { type: 'message.updated', properties: { sessionID: session, info: { id: 'm_a', role: 'assistant', sessionID: session, tokens: { input: 10, output: 4, reasoning: 1, cache: { read: 5 } } } } },
-  { type: 'permission.asked', properties: { id: 'per_1', sessionID: session, permission: 'bash', patterns: ['rm -rf'] } },
+  { type: 'permission.asked', properties: { id: 'per_1', sessionID: session, permission: 'bash', patterns: ['rm -rf'], tool: { callID: 'call_bash' } } },
+  { type: 'message.part.updated', properties: { sessionID: session, part: { id: 'p_bash', messageID: 'm_a', sessionID: session, type: 'tool', tool: 'bash', callID: 'call_bash', state: { status: 'error', title: 'rm -rf' } } } },
   { type: 'message.part.updated', properties: { sessionID: session, part: { id: 'p_tool', messageID: 'm_a', sessionID: session, type: 'tool', tool: 'read', state: { status: 'completed', title: 'note.txt' } } } },
   { type: 'message.part.updated', properties: { sessionID: session, part: { id: 'p_text', messageID: 'm_a', sessionID: session, type: 'text', text } } },
   { type: 'message.part.updated', properties: { sessionID: 'ses_other', part: { id: 'x', messageID: 'm_a', sessionID: 'ses_other', type: 'text', text: 'OTHER SESSION' } } },
@@ -79,7 +80,7 @@ test('agent turns stream only assistant text and tool notes, apply policy, reuse
   await engine.run(agentRoute(), { messages, output_config: { effort: 'medium' } }, async (e, d) => { events.push([e, d]); }, new AbortController().signal);
   const text = events.filter(([e]) => e === 'content_block_delta').map(([, d]) => d.delta.text).join('');
   // The early delta is held until its part is known to be text, never dropped or duplicated.
-  assert.equal(text, '> ⚙︎ read · note.txt\n\npineapple');
+  assert.equal(text, '> ⚙︎ bash · rm -rf — blocked: Bridge’s OpenCode agent is set to Read only — allow it in OpenCode Bridge → Settings → OpenCode agent → Edit & run\n\n> ⚙︎ read · note.txt\n\npineapple');
   assert.ok(!text.includes('SHOULD NOT ECHO') && !text.includes('OTHER SESSION'));
   assert.deepEqual(events.at(-2)?.[1].usage, { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 5 });
   const prompt = fake.calls.find(c => c.path.endsWith('/prompt_async'))!;
@@ -87,6 +88,7 @@ test('agent turns stream only assistant text and tool notes, apply policy, reuse
   assert.equal(prompt.body.variant, 'low');
   assert.equal(prompt.auth, 'Basic test');
   assert.deepEqual(fake.calls.find(c => c.path === '/permission/per_1/reply')?.body.reply, 'reject');
+  assert.match(fake.calls.find(c => c.path === '/permission/per_1/reply')?.body.message, /Settings → OpenCode agent → Edit & run/);
   assert.deepEqual(fake.calls.find(c => c.path === '/session')?.body.permission, [{ permission: '*', pattern: '*', action: 'ask' }]);
   // The next Desktop turn resumes the same OpenCode session without resending history.
   fake.calls.length = 0;
@@ -113,4 +115,12 @@ test('agent errors before any text become client errors; the gateway streams age
   assert.equal(message.model, 'claude-sonnet-5'); assert.match((message.content[0] as any).text, /Bridge OK$/);
   const once = await client.messages.create({ model: 'claude-sonnet-5', max_tokens: 100, messages: [{ role: 'user', content: 'again' }] });
   assert.match((once.content[0] as any).text, /Bridge OK$/); assert.equal(once.stop_reason, 'end_turn');
+});
+test('edits are allowed in the project by default; blocked actions say where to change it', () => {
+  assert.equal(defaultAgentSettings().permission, 'workspace-write');
+  assert.equal(permissionReply(defaultAgentSettings().permission, 'edit'), 'once');
+  assert.equal(permissionReply(defaultAgentSettings().permission, 'external_directory'), 'reject');
+  assert.match(blockedReason('read-only', 'edit'), /Edit & run/);
+  assert.match(blockedReason('workspace-write', 'external_directory'), /Full access/);
+  assert.match(blockedReason('full', 'question'), /interactive/);
 });

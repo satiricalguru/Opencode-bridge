@@ -2,6 +2,10 @@
 
 Updated 17 October 2026: `opencode-claude-bridge` 0.2.0. See [VERIFICATION.md](VERIFICATION.md) for live results.
 
+## 0.4.1
+
+- **Fix: agent models couldn't edit files.** The OpenCode agent defaulted to Read only, so Codex and Claude edits on free models were declined. The default is now **Edit & run**: edits and commands are allowed inside the project folder, and anything outside it is still declined. Blocked actions now say exactly where to change the policy, a launchpad **Allow edits** button switches it in one click, and the tool note reads `blocked: …` instead of `not completed`. Verified live: DeepSeek V4.1 Flash Free fixed `calc.py` through the bridge.
+
 ## 0.4.0
 
 - **Codex names, your models.** Mirrors the Claude feature: Bridge reads Codex's own visible model names from `models_cache.json` (falling back to a default list), maps each to a backend with its own pinned effort, and writes them into the Codex catalog. Codex's picker shows its usual names while your models answer. You can choose the default name with **Make default**, and launchpad picks move the names that follow the default. Verified live with Codex CLI 0.153.4: `gpt-6-luna` → DeepSeek V4.1 Flash Free (agent), `gpt-5.6-terra` → Nemotron 3 Super (OpenRouter).

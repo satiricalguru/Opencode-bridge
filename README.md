@@ -10,8 +10,8 @@ Run **free OpenCode Zen models**, **Ollama**, **LM Studio**, **OpenRouter**, **N
 
 <p>
   <a href="#-quick-start"><img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#-testing"><img alt="Tests" src="https://img.shields.io/badge/tests-67%20passing-2fbf85?style=for-the-badge" /></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.4.0-2b7fff?style=for-the-badge" />
+  <a href="#-testing"><img alt="Tests" src="https://img.shields.io/badge/tests-68%20passing-2fbf85?style=for-the-badge" /></a>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.1-2b7fff?style=for-the-badge" />
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-8b5cf6?style=for-the-badge" /></a>
 </p>
 
@@ -209,8 +209,8 @@ So Bridge **doesn't pretend to be OpenCode. It uses OpenCode.** For these models
 
 | Policy | OpenCode may… |
 | --- | --- |
-| **Read only** *(default)* | read, search and browse |
-| **Edit & run** | also edit files and run commands in the working folder |
+| **Read only** | read, search and browse |
+| **Edit & run** *(default)* | also edit files and run commands in the project folder |
 | **Full access** | also reach outside the working folder |
 
 > [!NOTE]
