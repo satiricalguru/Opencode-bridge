@@ -231,6 +231,7 @@ h3 { margin: 0; font-weight: 600; }
 .app-id p { margin: 2px 0 0; font-size: 12px; color: var(--text-3); }
 .app-state { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); }
 .app-state > span { display: flex; align-items: center; gap: 7px; }
+.app-state > span:last-child { padding: 2px 8px; border-radius: 6px; background: var(--glass-strong); border: 1px solid var(--line); }
 .app-state .ok { color: var(--ok); font-weight: 600; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
 .status-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
@@ -357,3 +358,13 @@ input[aria-invalid=true] { border-color: var(--danger) !important; }
 }
 @media (max-height: 760px) { .drag { height: 40px; } .brand { padding-bottom: 14px; } .side-section { margin-top: 14px; } h1 { font-size: 29px; } .header { margin-bottom: 16px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
+
+/* Confirmation dialog */
+.dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(4, 7, 12, .38); backdrop-filter: blur(6px); animation: fade .25s var(--ease) both; }
+@keyframes fade { from { opacity: 0; } }
+.dialog { width: min(420px, calc(100vw - 40px)); padding: 22px; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--line-strong); box-shadow: 0 30px 80px -20px rgba(0,0,0,.55); backdrop-filter: blur(30px) saturate(1.4); animation: toastIn .45s var(--ease-spring) both; }
+.dialog h3 { font-size: 16px; letter-spacing: -.2px; }
+.dialog p { margin: 8px 0 20px; font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions .primary { height: 36px; }
+.primary.danger { background: linear-gradient(180deg, #ff7a7a, var(--danger)); box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--danger) 80%, transparent); }

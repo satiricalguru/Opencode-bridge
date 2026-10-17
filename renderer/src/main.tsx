@@ -99,6 +99,8 @@ function App() {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState<{ title: string; body: string; action: string; danger?: boolean; run: () => void }>();
+  const searchRef = useRef<HTMLInputElement>(null);
   const hydrated = useRef(false);
   const busyRef = useRef(false);
   const selection = selections[client];
@@ -117,20 +119,22 @@ function App() {
     setWorkspace(next.preferences.agent.workspace); setPermission(next.preferences.agent.permission);
     hydrated.current = true;
   };
+  // Background polls (no label) neither take nor respect the action lock, so a click
+  // that lands during a poll is never dropped.
   async function request(value: DesktopRequest, label = '', success = '') {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    if (label) { setBusy(label); setError(''); }
+    const quiet = !label;
+    if (!quiet && busyRef.current) return;
+    if (!quiet) { busyRef.current = true; setBusy(label); setError(''); }
     try {
       const response = await window.desktop.request(value);
-      if (!response.ok) { setError(response.error); return; }
+      if (!response.ok) { if (!quiet) { setError(response.error); toast({ tone: 'error', title: 'That didn’t work', body: response.error }); } return; }
       const next = response.state;
       setData(next);
       hydrate(next);
       if (value.action === 'refresh') setSelections(all => ({ claude: all.claude.model ? all.claude : normalizeSelection({ model: firstEnabled(next.models) }), codex: all.codex.model ? all.codex : { model: firstEnabled(next.models) } }));
       if (success) toast({ tone: 'success', title: success });
-    } catch { setError('The desktop service could not be reached. Reopen the app and try again.'); }
-    finally { busyRef.current = false; setBusy(''); }
+    } catch { if (!quiet) setError('The desktop service could not be reached. Reopen the app and try again.'); }
+    finally { if (!quiet) { busyRef.current = false; setBusy(''); } }
   }
   useEffect(() => {
     void (async () => { await request({ action: 'state' }); await request({ action: 'refresh' }, 'Reading your connections'); })();
@@ -150,6 +154,15 @@ function App() {
     return () => { clearInterval(timer); window.removeEventListener('focus', onFocus); off?.(); };
   }, []);
   useEffect(() => { setLimit(80); }, [query, provider, readyOnly]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
+      if ((event.key === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !typing)) { event.preventDefault(); setPage('launch'); requestAnimationFrame(() => searchRef.current?.focus()); }
+      if (event.key === 'Escape') setConfirm(undefined);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // Theme: system follows macOS; the native side matches so vibrancy and chrome agree.
   useEffect(() => {
     const root = document.documentElement;
@@ -194,11 +207,13 @@ function App() {
     setError('');
   };
   const modelOptions = (ref: string) => <>{ref && !find(ref) && <option value={ref} disabled>{ref} · unavailable</option>}{models.filter(model => model.enabled || model.ref === ref).map(model => <option key={model.ref} value={model.ref} disabled={!model.enabled}>{model.name} — {prettyProvider(model.provider)}{model.via === 'agent' ? ' · agent' : ''}</option>)}</>;
-  const launchCodex = (target: 'cli' | 'app') => request({ action: 'launch', client: 'codex', selection: selections.codex, port, restart: target === 'app', target }, target === 'app' ? 'Connecting the Codex app' : 'Opening Codex in Terminal', target === 'app' ? 'Codex app restarted with your model' : 'Codex opened in Terminal');
+  const launchCodex = (target: 'cli' | 'app') => target === 'app' && !(codex?.appConnected && !codexChanged) ? setConfirm({ title: 'Use this model in the Codex app?', body: 'Bridge sets the Codex app’s model and restarts it. Disconnect Codex later to restore your previous model exactly.', action: 'Restart Codex', run: () => runCodex(target) }) : runCodex(target);
+  const runCodex = (target: 'cli' | 'app') => request({ action: 'launch', client: 'codex', selection: selections.codex, port, restart: target === 'app', target }, target === 'app' ? 'Connecting the Codex app' : 'Opening Codex in Terminal', target === 'app' ? 'Codex app restarted with your model' : 'Codex opened in Terminal');
   const appName = client === 'codex' ? 'Codex' : 'Claude';
   const portValid = Number.isInteger(port) && port >= 1024 && port <= 65535;
   const pages: Array<{ id: Page; label: string; icon: ReactNode }> = [{ id: 'launch', label: 'Launchpad', icon: <Layers3 size={17} /> }, { id: 'apps', label: 'Applications', icon: <AppWindow size={17} /> }, { id: 'settings', label: 'Settings', icon: <Settings2 size={17} /> }];
   const discovering = busy.includes('Reading') || busy.includes('Refreshing');
+  const STATUS_LABEL: Record<string, string> = { checking: 'Checking…', warn: 'Restore needed', on: 'Connected', idle: 'Installed, not connected', off: 'Not installed' };
   const appStatus = (id: ClientId) => { const s = statusOf(id); return !s ? 'checking' : s.recoveryNeeded ? 'warn' : s.connected ? 'on' : s.installed ? 'idle' : 'off'; };
 
   return <div className="app">
@@ -211,13 +226,13 @@ function App() {
         {pages.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => { setPage(item.id); setError(''); }}>{item.icon}<span>{item.label}</span>{item.id === 'apps' && <span className="nav-count">{data?.clients.length || 2}</span>}</button>)}
       </nav>
       <div className="side-section">
-        <div className="side-label">Connected apps</div>
-        {(['claude', 'codex'] as const).map(id => <button key={id} className="side-app" onClick={() => { setClient(id); setPage('launch'); }}><span className="side-app-icon"><Mark name={id} /></span><span>{id === 'claude' ? 'Claude' : 'Codex'}</span><span className={`status-dot ${appStatus(id)}`} title={appStatus(id)} /></button>)}
+        <div className="side-label">Apps</div>
+        {(['claude', 'codex'] as const).map(id => <button key={id} className="side-app" onClick={() => { setClient(id); setPage('launch'); }}><span className="side-app-icon"><Mark name={id} /></span><span>{id === 'claude' ? 'Claude' : 'Codex'}</span><span className={`status-dot ${appStatus(id)}`} title={STATUS_LABEL[appStatus(id)]} aria-label={STATUS_LABEL[appStatus(id)]} /></button>)}
       </div>
       <div className="sidebar-foot">
         <div className={`gateway-pill ${data?.gateway.ready ? 'live' : ''}`}><span className="pulse" /><span>{data?.gateway.ready ? <>Gateway <b>:{data.gateway.port}</b></> : 'Gateway idle'}</span>{data?.gateway.ready && <span className="routed">{data.gateway.routed}</span>}</div>
         <Segmented size="sm" label="Appearance" value={theme} onChange={setTheme} options={[{ value: 'system', label: <Monitor size={13} />, title: 'Match system' }, { value: 'light', label: <Sun size={13} />, title: 'Light' }, { value: 'dark', label: <Moon size={13} />, title: 'Dark' }]} />
-        <button className="quit" disabled={!!busy || !!data?.gateway.active} onClick={() => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting')}><LogOut size={14} /> Disconnect & Quit</button>
+        <button className="quit" disabled={!!busy || !!data?.gateway.active} onClick={() => setConfirm({ title: 'Disconnect and quit Bridge?', body: 'Claude and Codex go back to their previous models, connected apps restart, and the gateway stops.', action: 'Disconnect & Quit', danger: true, run: () => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting') })}><LogOut size={14} /> Disconnect & Quit</button>
         <span className="version">v{data?.version || '0.3.0'}</span>
       </div>
     </aside>
@@ -239,13 +254,19 @@ function App() {
             <div><h2>Model library</h2><p><b className="count">{readyCount}</b> ready{freeCount ? <> · <span className="hl-free">{freeCount} free</span></> : null}{agentCount ? <> · {agentCount} via OpenCode agent</> : null}</p></div>
             <label className="ready-toggle"><Switch checked={readyOnly} onChange={setReadyOnly} label="Show ready models only" /> Ready only</label>
           </div>
-          <div className="search"><Search size={16} /><input aria-label="Search models" value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${models.length} models…`} />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}<kbd>{shown.length}</kbd></div>
+          <div className="search"><Search size={16} /><input ref={searchRef} aria-label="Search models" value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${models.length} models…`} />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}<kbd>{shown.length}</kbd></div>
           <div className="chips" role="tablist" aria-label="Filter by provider">
             <button role="tab" aria-selected={provider === 'all'} className={provider === 'all' ? 'chip active' : 'chip'} onClick={() => setProvider('all')}><Sparkles size={13} /> All</button>
-            {providers.map(([id, info]) => <button role="tab" key={id} aria-selected={provider === id} className={provider === id ? 'chip active' : 'chip'} onClick={() => setProvider(provider === id ? 'all' : id)} title={prettyProvider(id)}><Mark name={providerMark(id, info.source)} label={prettyProvider(id)} /> {prettyProvider(id)} <span>{info.count}</span></button>)}
+            {providers.map(([id, info]) => <button role="tab" key={id} aria-selected={provider === id} className={provider === id ? 'chip active' : 'chip'} onClick={() => setProvider(provider === id ? 'all' : id)} title={prettyProvider(id)}><Mark name={providerMark(id, info.source)} /> {prettyProvider(id)} <span>{info.count}</span></button>)}
           </div>
           {locked && <button className="lock-note" onClick={() => setPage('apps')}><ShieldCheck size={14} /> Claude is connected — change its models in Applications <ArrowRight size={13} /></button>}
-          <div className="model-list" role="radiogroup" aria-label={`Primary model for ${appName}`} key={`${provider}-${readyOnly}`}>
+          <div className="model-list" role="radiogroup" aria-label={`Primary model for ${appName}`} key={`${provider}-${readyOnly}`} onKeyDown={event => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.model-row:not(:disabled)')];
+            const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)));
+            if (rows[next]) { event.preventDefault(); rows[next].focus(); rows[next].scrollIntoView({ block: 'nearest' }); }
+          }}>
             {!models.length && discovering && Array.from({ length: 7 }, (_, i) => <div className="model-row skeleton" key={i} style={vars({ '--i': i })}><span className="sk-icon" /><span className="sk-lines"><span /><span /></span></div>)}
             {shown.slice(0, limit).map((model, i) => {
               const checked = selection.model === model.ref;
@@ -297,7 +318,7 @@ function App() {
       {page === 'apps' && <div className="page apps" key="apps">
         <article className="panel integration" aria-label="Claude model configuration">
           <header className="integration-head"><span className="app-icon lg"><Mark name="claude" /></span><div><h2>Claude</h2><p>Claude keeps its own model names. Choose what really answers each one, and pin effort if you like.</p></div>
-            <button className="primary compact" disabled={!!busy || !claudeValid || !claude?.installed || !!data?.gateway.active || !portValid} onClick={() => request({ action: 'apply', client: 'claude', selection: claudeSelection, port, restart: true }, 'Applying Claude models', 'Models applied — Claude restarted')}><RefreshCw size={14} className={busy.includes('Applying Claude') ? 'spin' : ''} />{busy.includes('Applying Claude') ? 'Applying…' : mappingChanged ? 'Apply & restart' : 'Restart Claude'}</button></header>
+            <button className="primary compact" disabled={!!busy || !claudeValid || !claude?.installed || !!data?.gateway.active || !portValid} onClick={() => setConfirm({ title: 'Apply and restart Claude?', body: 'Claude quits and reopens with these models. Unsaved work in Claude may be interrupted.', action: 'Apply & restart', run: () => request({ action: 'apply', client: 'claude', selection: claudeSelection, port, restart: true }, 'Applying Claude models', 'Models applied — Claude restarted') })}><RefreshCw size={14} className={busy.includes('Applying Claude') ? 'spin' : ''} />{busy.includes('Applying Claude') ? 'Applying…' : mappingChanged ? 'Apply & restart' : 'Restart Claude'}</button></header>
           <div className="mappings">{mappingRows.map((key, i) => {
             const slot = CLAUDE_SLOTS.find(slot => slot.key === key)!;
             const ref = mappingRef(claudeSelection, key); const model = find(ref);
@@ -340,10 +361,14 @@ function App() {
         <section className="panel setting"><div className="setting-copy"><h3>Gateway port</h3><p>The local address Claude and Codex use. Disconnect Claude to change it.</p></div><div className="inline-form"><input className="port" aria-label="Gateway port" aria-invalid={!portValid} type="number" min="1024" max="65535" value={Number.isFinite(port) ? port : ''} disabled={claudeLocked || !!busy} onChange={e => setPort(e.target.valueAsNumber)} /><button className="secondary" disabled={claudeLocked || !!busy || !claudeValid || !portValid} onClick={() => request({ action: 'save', client: 'claude', selection: claudeSelection, port }, 'Saving settings', 'Port saved — applies on next launch')}>Save</button></div></section>
         <section className="panel setting"><div className="setting-copy"><h3>Background gateway</h3><p>{data?.gateway.ready ? `Running on port ${data.gateway.port} · ${data.gateway.routed} requests routed. Closing the window keeps apps connected.` : 'Starts automatically when you launch an app.'}</p></div><button className="secondary" disabled={!!busy || !data?.gateway.ready || claudeLocked || !!codex?.connected} onClick={() => request({ action: 'stop' }, 'Stopping gateway', 'Gateway stopped')}><Activity size={14} /> Stop</button></section>
         <section className="panel setting"><div className="setting-copy"><h3>App data & recovery</h3><p>Saved selections, recovery journals and gateway logs.</p></div><button className="secondary" onClick={() => request({ action: 'open-state' })}><FolderOpen size={14} /> Open folder</button></section>
-        <section className="panel setting danger"><div className="setting-copy"><h3>Disconnect & Quit</h3><p>Restore Claude and Codex, stop the gateway, and exit Bridge. Closing the window only hides it.</p></div><button className="secondary danger" disabled={!!busy || !!data?.gateway.active} onClick={() => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting')}><LogOut size={14} /> Disconnect & Quit</button></section>
+        <section className="panel setting danger"><div className="setting-copy"><h3>Disconnect & Quit</h3><p>Restore Claude and Codex, stop the gateway, and exit Bridge. Closing the window only hides it.</p></div><button className="secondary danger" disabled={!!busy || !!data?.gateway.active} onClick={() => setConfirm({ title: 'Disconnect and quit Bridge?', body: 'Claude and Codex go back to their previous models, connected apps restart, and the gateway stops.', action: 'Disconnect & Quit', danger: true, run: () => request({ action: 'disconnect-quit', client: 'claude', restart: true }, 'Disconnecting and quitting') })}><LogOut size={14} /> Disconnect & Quit</button></section>
       </div>}
       <footer className="statusbar"><span>{busy ? <><LoaderCircle size={12} className="spin" /> {busy}</> : <><span className={`status-dot ${data?.gateway.ready ? 'on' : 'idle'}`} />{data?.gateway.ready ? `${data.gateway.routed} requests routed${data.gateway.active ? ` · ${data.gateway.active} active` : ''}` : 'Ready when you are'}</>}</span><span>{models.length} models · {providers.length} sources</span></footer>
     </main>
+    {confirm && <div className="dialog-backdrop" onClick={() => setConfirm(undefined)}><div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}>
+      <h3 id="dialog-title">{confirm.title}</h3><p>{confirm.body}</p>
+      <div className="dialog-actions"><button className="secondary" autoFocus onClick={() => setConfirm(undefined)}>Cancel</button><button className={confirm.danger ? 'primary danger' : 'primary'} onClick={() => { const run = confirm.run; setConfirm(undefined); run(); }}>{confirm.action}</button></div>
+    </div></div>}
     <div className="toasts" aria-live="polite">{toasts.map(t => <div key={t.id} className={`toast ${t.tone}`}><span className="toast-icon">{t.icon || (t.tone === 'success' ? <Check size={15} /> : t.tone === 'error' ? <CircleAlert size={15} /> : <Sparkles size={15} />)}</span><div><strong>{t.title}</strong>{t.body && <p>{t.body}</p>}</div><button aria-label="Dismiss" onClick={() => setToasts(list => list.filter(x => x.id !== t.id))}><X size={13} /></button></div>)}</div>
   </div>;
 }

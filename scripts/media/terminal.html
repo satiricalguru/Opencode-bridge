@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:transparent;font-family:'SF Mono',Menlo,monospace}
+.stage{height:100%;display:grid;place-items:center;background:radial-gradient(1200px 700px at 15% 0%,#1d3c78 0,transparent 60%),radial-gradient(900px 600px at 100% 100%,#3b2470 0,transparent 55%),#05070c}
+.win{width:1080px;height:640px;border-radius:14px;background:rgba(14,17,24,.92);border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 120px -30px rgba(0,0,0,.8);overflow:hidden;display:flex;flex-direction:column}
+.bar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.07);color:#8b95a7;font:500 12px -apple-system,system-ui}
+.bar i{width:12px;height:12px;border-radius:50%;display:inline-block}.bar span{margin:0 auto;transform:translateX(-30px)}
+pre{margin:0;padding:18px 20px;flex:1;overflow:hidden;color:#d7dde8;font-size:13.5px;line-height:1.55;white-space:pre-wrap;display:flex;flex-direction:column;justify-content:flex-end}
+.p{color:#7fb2ff}.c{color:#9ad1a8}.d{color:#6b7486}.e{color:#ff8f8f}.h{color:#e6c07b}.cur{display:inline-block;width:8px;height:16px;background:#7fb2ff;vertical-align:-3px;animation:b 1s steps(1) infinite}@keyframes b{50%{opacity:0}}
+</style></head><body><div class="stage"><div class="win"><div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>Terminal — codex --profile opencode-bridge</span></div><pre id="out"></pre></div></div>
+<script>
+const out = document.getElementById('out');
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function paint(text, cursor) {
+  out.innerHTML = esc(text).split('\n').map(line =>
+    /^\$ /.test(line) ? `<span class="p">${line}</span>` : /^(exec|codex|user|tokens used)$/.test(line) ? `<span class="h">${line}</span>` :
+    /^\/bin\/zsh/.test(line) ? `<span class="c">${line}</span>` : /ERROR/.test(line) ? `<span class="e">${line.slice(0, 120)}…</span>` :
+    /^(workdir|model|provider|approval|sandbox|reasoning|session id|-----)|succeeded in/.test(line) ? `<span class="d">${line}</span>` : line).join('\n') + (cursor ? '<span class="cur"></span>' : '');
+}
+window.show = (text, cursor) => paint(text, cursor);
+</script></body></html>

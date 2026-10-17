@@ -22,7 +22,9 @@
     "build:app": "npm run build && npm run check:ui && vite build && node scripts/icons.mjs",
     "app": "npm run build:app && electron .",
     "package:app": "npm run build:app && electron-builder --mac --arm64 --dir",
-    "package:dmg": "npm run build:app && electron-builder --mac dmg --arm64"
+    "package:dmg": "npm run build:app && electron-builder --mac dmg --arm64",
+    "media": "npm run build && vite build && electron scripts/media/capture.cjs",
+    "media:codex": "npm run build && tsx scripts/media/record-codex.ts"
   },
   "dependencies": {
     "jsonc-parser": "3.3.1"
