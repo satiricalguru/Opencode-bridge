@@ -1,0 +1,10 @@
+/*
+!/website
+!/docs
+/docs/*
+!/docs/media
+!/assets
+/assets/*
+!/assets/icon.png
+!/vercel.json
+/website/media

@@ -17,7 +17,7 @@ Run **free OpenCode Zen models**, **Ollama**, **LM Studio**, **OpenRouter**, **N
 
 <p>
   <a href="https://github.com/satiricalguru/Opencode-bridge/releases/latest"><b>⬇︎ Download for macOS</b></a> ·
-  <a href="https://satiricalguru.github.io/Opencode-bridge/"><b>🌐 Website</b></a>
+  <a href="https://opencode-bridge-gilt.vercel.app"><b>🌐 Website</b></a>
 </p>
 
 <p>
