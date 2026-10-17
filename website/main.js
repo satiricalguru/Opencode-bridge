@@ -185,18 +185,18 @@ for (const button of document.querySelectorAll('[data-copy]')) {
   });
 }
 
-/* ---------- Latest release: point Download at the real .dmg ---------- */
+/* ---------- Newer release? Upgrade the Download links ---------- */
+// Links ship pointing at the bundled version's .dmg, so downloads never depend on the
+// rate-limited GitHub API; the API only upgrades them when a newer release exists.
 (async () => {
   try {
     const response = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { accept: 'application/vnd.github+json' } });
     if (!response.ok) return;
     const release = await response.json();
     const dmg = (release.assets || []).find(a => a.name.endsWith('.dmg'));
-    document.getElementById('relName').textContent = `${release.tag_name} · ${new Date(release.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
-    if (dmg) {
-      const link = document.getElementById('dmgLink');
-      link.href = dmg.browser_download_url;
-      document.getElementById('dmgSize').textContent = `${Math.round(dmg.size / 1024 / 1024)} MB`;
-    }
-  } catch { /* Offline or rate-limited: the link falls back to the releases page. */ }
+    if (!dmg) return;
+    for (const link of document.querySelectorAll('[data-dmg]')) link.href = dmg.browser_download_url;
+    document.getElementById('relName').textContent = `${release.tag_name} · Apple Silicon`;
+    document.getElementById('dmgSize').textContent = `${Math.round(dmg.size / 1024 / 1024)} MB`;
+  } catch { /* Offline or rate-limited: the shipped links still work. */ }
 })();
