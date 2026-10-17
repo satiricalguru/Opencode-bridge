@@ -26,6 +26,7 @@ let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
 let requestingQuit = false;
+const appIconPath = () => join(root, 'assets', 'icon.png');
 const show = () => { if (window) { window.show(); window.focus(); } };
 const finishQuit = () => { quitting = true; app.quit(); };
 async function disconnectAll(): Promise<void> {
@@ -62,6 +63,10 @@ else {
   // Waiting for ready at module top level stalls Electron's ESM startup.
   void app.whenReady().then(async () => {
   await mkdir(stateDir(), { recursive: true, mode: 0o700 });
+  // Unpackaged runs (`npm run app`) would otherwise show Electron's default Dock icon.
+  const appIcon = nativeImage.createFromPath(join(root, 'assets', 'icon.png'));
+  if (process.platform === 'darwin' && !appIcon.isEmpty()) app.dock?.setIcon(appIcon);
+  app.setAboutPanelOptions({ applicationName: 'OpenCode Bridge', applicationVersion: app.getVersion(), copyright: 'MIT License', iconPath: join(root, 'assets', 'icon.png') });
   protocol.handle('bridge', request => {
     const url = new URL(request.url);
     if (url.hostname !== 'app' || request.method !== 'GET') return new Response('Not found', { status: 404 });
@@ -70,7 +75,7 @@ else {
     return net.fetch(pathToFileURL(path).href);
   });
   window = new BrowserWindow({ width: 1240, height: 820, minWidth: 1040, minHeight: 690, show: false,
-    title: 'OpenCode Bridge', backgroundColor: '#00000000', transparent: false, vibrancy: 'under-window', visualEffectState: 'active', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 19 },
+    title: 'OpenCode Bridge', backgroundColor: '#00000000', transparent: false, vibrancy: 'under-window', visualEffectState: 'active', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 19 }, icon: appIconPath(),
     webPreferences: { preload: join(root, 'desktop', 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true },
   });
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));

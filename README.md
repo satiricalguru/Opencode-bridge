@@ -1,399 +1,396 @@
 <div align="center">
 
-  <img src="assets/icon.svg" alt="OpenCode Bridge Logo" width="128" height="128" style="border-radius: 28px; box-shadow: 0 8px 24px rgba(24, 52, 47, 0.35);" />
+<img src="assets/icon.png" alt="OpenCode Bridge" width="128" height="128" />
 
-  # OpenCode Bridge
+# OpenCode Bridge
 
-  <p align="center">
-    <strong>The seamless local gateway bridging OpenCode & Ollama models straight into Claude Desktop.</strong>
-  </p>
+### Any model. Your favourite apps. Zero friction.
 
-  <p align="center">
-    <a href="https://readme-typing-svg.demolab.com">
-      <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=16&duration=3000&pause=1000&color=2DD4BF&center=true&vCenter=true&width=560&lines=Bridge+OpenCode+models+directly+into+Claude+Desktop;Run+local+Ollama+models+with+zero+friction;Fail-safe+journaled+profile+state+recovery;Native+Anthropic+streaming+%26+tool+call+translation" alt="Typing SVG" />
-    </a>
-  </p>
+Run **free OpenCode Zen models**, **Ollama**, **LM Studio**, **OpenRouter**, **NVIDIA** and every OpenCode provider inside **Claude Desktop** and **Codex**. Claude keeps its own model names, while a model you choose answers behind the scenes, with the effort level you choose.
 
-  <p align="center">
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge&logo=open-source-initiative&logoColor=white" alt="MIT License" /></a>
-    <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D22.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js Version" /></a>
-    <a href="https://www.electronjs.org"><img src="https://img.shields.io/badge/Electron-44.x-47848F.svg?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" /></a>
-    <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" /></a>
-    <a href="https://apple.com/macos"><img src="https://img.shields.io/badge/Platform-macOS%20Apple%20Silicon-black.svg?style=for-the-badge&logo=apple&logoColor=white" alt="macOS" /></a>
-  </p>
+<p>
+  <a href="#-quick-start"><img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-111?style=for-the-badge&logo=apple&logoColor=white" /></a>
+  <a href="#-testing"><img alt="Tests" src="https://img.shields.io/badge/tests-65%20passing-2fbf85?style=for-the-badge" /></a>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.3.0-2b7fff?style=for-the-badge" />
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-8b5cf6?style=for-the-badge" /></a>
+</p>
 
-  <p align="center">
-    <a href="#-overview">Overview</a> •
-    <a href="#-key-features">Key Features</a> •
-    <a href="#-architecture">Architecture</a> •
-    <a href="#-desktop-companion-app">Desktop App</a> •
-    <a href="#-cli-quickstart">CLI Quickstart</a> •
-    <a href="#-local-ollama-models">Ollama Setup</a> •
-    <a href="#-security--state-isolation">Security & Recovery</a> •
-    <a href="#-cli-reference">CLI Reference</a> •
-    <a href="#-troubleshooting">Troubleshooting</a>
-  </p>
+<p>
+  <a href="#-quick-start">Quick start</a> ·
+  <a href="#-see-it-in-action">Demo</a> ·
+  <a href="#-codex">Codex</a> ·
+  <a href="#-free-opencode-models">Free models</a> ·
+  <a href="#%EF%B8%8F-how-it-works">How it works</a> ·
+  <a href="#-testing">Testing</a> ·
+  <a href="#-faq--troubleshooting">FAQ</a>
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/media/hero-light.png" />
+  <img src="docs/media/hero-dark.png" alt="OpenCode Bridge launchpad: a model library with Ollama, LM Studio, OpenCode Zen and NVIDIA models next to a Claude / Codex launcher" width="100%" />
+</picture>
 
 </div>
 
 ---
 
-## 🌟 Overview
+## ✨ Why Bridge?
 
-**What's new in 0.2.0 (17 October 2026):** **free OpenCode Zen models** now work in Claude Desktop and Codex. They run inside a private OpenCode agent because OpenCode allows its free tier only within OpenCode. 0.2.0 also adds **Codex support** like `ollama launch codex` (CLI profile and Codex app) and a **per-model effort level** you can pin. Claude still shows its own model names (Sonnet 5, Opus 5, Haiku 4.5, Fable 5, Sonnet 4.6) while your chosen model answers. See [VERIFICATION.md](VERIFICATION.md) for live results and limits. The local application build is unsigned and not notarized.
+Claude Desktop and Codex are great front-ends, but they only talk to their own clouds. **Bridge is the missing switchboard.** It works like `ollama launch` and is built for every model you already have:
 
-**OpenCode Bridge** empowers developers to unlock the full potential of **Claude Desktop** by routing inference requests through a resilient local gateway. Connect any model from your configured **OpenCode connections** or your locally running **Ollama** server, and interact using Claude Desktop's signature interface, keyboard shortcuts, and client tools.
-
-Claude Desktop sends standard Anthropic Messages API requests directly to the bridge at `127.0.0.1`. The bridge intelligently determines how to fulfill each request:
-
-- 🚀 **Native Anthropic Passthrough:** For upstream Anthropic providers, requests are forwarded transparently, preserving prompt caching, opaque thinking blocks, and specialized output headers.
-- 🔄 **Real-Time OpenAI Translation:** For OpenAI-compatible providers and local Ollama instances, the bridge performs bidirectionally streamed protocol translation, transforming Anthropic messages into OpenAI Chat Completions and reconstructing tool calls with zero latency.
-- 🛡️ **Fail-Safe Recovery Journaling:** Your original Claude Desktop profiles and configuration states are snapshotted in an atomic recovery journal before any modifications occur. Disconnecting instantly restores your previous settings.
-
----
-
-## ✨ Key Features
-
-| Feature | Description |
-| :--- | :--- |
-| **🖥️ Modern Desktop Companion** | Sleek Electron app with real-time model catalog browsing, status indicators, and menu bar tray controls. |
-| **🧠 Local & Cloud Flexibility** | Effortlessly switch between local Ollama instances (e.g. Llama 3, Qwen 2.5, DeepSeek) and cloud API providers. |
-| **⚡ Bidirectional Streaming** | Incremental token streaming with real-time tool calling and response handling. |
-| **🎛️ Tier Overrides** | Map separate models to Sonnet, Opus, and Haiku tiers for optimal cost and performance. |
-| **🔒 Air-Gapped Security** | Bound exclusively to `127.0.0.1`. Renderer has zero credential access; sensitive keys never leave the secure process boundary. |
-| **💾 Atomic Recovery Journal** | Automatic backup and restore of Claude Desktop profiles. Restores pristine original state on disconnect. |
-| **🛠️ Rich CLI Interface** | Complete terminal client for headless workflows, background daemons, and scripting. |
-| **🆓 Free OpenCode Zen Models** | Big Pickle, DeepSeek V4.1 Flash Free, GLM-5.3 Flash Free, Nemotron and more run through a bridge-owned OpenCode agent, with a read-only, edit, or full-access tool policy. |
-| **🧩 Codex Support** | `/v1/responses` endpoint plus an `opencode-bridge` Codex profile (`codex --profile opencode-bridge`) or a reversible Codex app selection, like `ollama launch codex`. |
-| **🎨 Premium Light & Dark UI** | Atmospheric glass design with system/light/dark themes, smooth motion, and real provider logos (Ollama, LM Studio, OpenCode, NVIDIA, OpenRouter…). |
-| **🔄 Live Model Discovery** | Pull a model in Ollama, download one in LM Studio, or add a provider in OpenCode — it appears within seconds, no refresh needed. |
-| **🖥️ LM Studio** | Downloaded LM Studio models run through its Anthropic-compatible endpoint; Bridge starts its server and loads the model on launch. |
-| **🎚️ Effort Levels** | Pin Low through Max per Claude slot or for Codex; unsupported requests map to the nearest level the model offers. |
+| | |
+| --- | --- |
+| 🆓 **Free models, for real** | OpenCode Zen's free tier (Big Pickle, DeepSeek V4.1 Flash Free, GLM-5.3 Flash Free, Nemotron…) only works *inside OpenCode*. Bridge runs them in a private OpenCode agent, which is the supported way, with no API key and no tricks. |
+| 🎭 **Claude names, your models** | Claude shows **Sonnet 5, Opus 5, Haiku 4.5, Fable 5 and Sonnet 4.6**. You decide what really answers each one. |
+| 🧩 **Codex too** | One click opens `codex --profile opencode-bridge`, or switches the Codex app to your model. Undo is exact. |
+| 🎚️ **Effort you control** | Pin Low → Max per model, or let the app decide. Requests snap to the levels a model actually supports. |
+| 🔄 **Live model library** | `ollama pull`, an LM Studio download or a new OpenCode provider shows up within seconds, with no refresh. |
+| 🛡️ **Safe by design** | Loopback-only gateway, journaled config edits, one-click restore. Your keys stay in OpenCode. |
+| 🎨 **Premium app** | Glass light and dark themes, real provider logos, and smooth spring motion. |
 
 ---
 
-## 🏗️ Architecture
-
-The following diagram illustrates how OpenCode Bridge orchestrates communication between Claude Desktop, local instances, and upstream providers:
-
-```mermaid
-flowchart TB
-    subgraph Client["🖥️ User Workspace"]
-        CD["Claude Desktop Client\n(Native Tools, UI, Hotkeys)"]
-        GUI["OpenCode Bridge Desktop App\n(Electron Companion & Tray)"]
-        CLI["OpenCode CLI\n(Headless Engine)"]
-    end
-
-    subgraph BridgeCore["🛡️ OpenCode Bridge Core (127.0.0.1:41415)"]
-        GW["Authenticated Local Gateway"]
-        AUTH["Secure Credential Resolver\n(In-Memory Bounded Store)"]
-        TRANS["Protocol Translation Engine\n(Anthropic ↔ OpenAI Chat Completions)"]
-        REC["Atomic Recovery Journal\n(0600 Mode State Store)"]
-    end
-
-    subgraph Backends["🌐 Inference Providers"]
-        OLLAMA["🦙 Local Ollama Service\n(http://127.0.0.1:11434)"]
-        OPENCODE["☁️ OpenCode Connected Providers\n(OpenAI, Mistral, Groq, DeepSeek)"]
-        ANTHROPIC["⚡ Direct Anthropic API\n(Native Passthrough with Cache)"]
-    end
-
-    CD <== "Anthropic Messages Protocol\n(Bearer Local Bridge Credential)" ==> GW
-    GUI -. "Controls & Monitors" .-> GW
-    CLI -. "Launches / Stops / Status" .-> GW
-
-    GW --> AUTH
-    GW --> REC
-    GW <--> TRANS
-
-    TRANS <== "Native Forwarding" ==> ANTHROPIC
-    TRANS <== "Streamed Chat Completions + Tools" ==> OPENCODE
-    TRANS <== "OpenAI-Compatible Local API" ==> OLLAMA
-
-    classDef client fill:#18342f,stroke:#3b5346,stroke-width:2px,color:#e7eed7;
-    classDef bridge fill:#0f221e,stroke:#2dd4bf,stroke-width:2px,color:#ffffff;
-    classDef backend fill:#1f2937,stroke:#4b5563,stroke-width:2px,color:#f3f4f6;
-
-    class CD,GUI,CLI client;
-    class GW,AUTH,TRANS,REC bridge;
-    class OLLAMA,OPENCODE,ANTHROPIC backend;
-```
-
----
-
-## 🖥️ Desktop Companion App
-
-The packaged Electron companion provides an intuitive, high-craft macOS experience:
+## 🎬 See it in action
 
 <div align="center">
-  <img src="assets/icon.png" width="96" height="96" alt="Companion Icon" />
-  <p><em>Built with Electron 44, React 19, TypeScript, and Vite</em></p>
+
+<img src="docs/media/tour.gif" alt="Tour: choosing models, pinning effort, filtering by provider, switching between Claude and Codex, Applications, Settings and theme switching" width="100%" />
+
+<sub>Real app UI with demo data · <a href="docs/media/tour.mp4">▶︎ Watch in full quality (MP4)</a></sub>
+
 </div>
 
-### App Features:
-1. **Search & Filter:** Instant search through all configured OpenCode models and detected local Ollama models.
-2. **Ready to Connect Filter:** Highlights protocol-compatible models with available API-key credentials or discovered local endpoints. This does not certify inference access.
-3. **Model Tier Overrides:** Independently map Opus and Haiku tiers to secondary models (e.g. route Haiku to a lightning-fast local model).
-4. **One-Click Launch:** Automatically writes the bridge profile, starts the gateway daemon, and launches Claude Desktop.
-5. **Instant Restoration:** Click **Restore previous connection** to cleanly remove bridge configuration, revert Claude Desktop settings, and shut down the gateway.
-6. **Menu Bar Minimization:** Closing the window tucks the app into your macOS menu bar without disrupting active conversations.
+### New models appear automatically
 
-### Running from Source:
+<img src="docs/media/live-models.gif" alt="A model pulled in Ollama slides into the library with a New badge and a toast" width="100%" />
+
+Bridge checks Ollama, LM Studio and OpenCode every few seconds using cheap fingerprints, not full scans. Against a real Ollama install, `ollama pull` showed up **~4 s** later and `ollama rm` **~2 s** later.
+
+---
+
+## 🚀 Quick start
+
+**You need:** macOS (Apple Silicon), Node 22+, the [OpenCode CLI](https://opencode.ai) with at least one provider or the free tier, and optionally Claude Desktop, Codex, Ollama or LM Studio.
 
 ```bash
-# 1. Install dependencies
-npm ci
+git clone https://github.com/satiricalguru/Opencode-bridge.git
+```
 
-# 2. Build the desktop app and renderer
-npm run build:app
+```bash
+cd Opencode-bridge && npm install
+```
 
-# 3. Launch the desktop companion
+```bash
 npm run app
 ```
 
-### Packaging for macOS:
+Then:
+
+1. **Pick a model** in the library. Free, local and agent models are all labelled.
+2. Optionally **pin an effort** (Auto, Low … Max).
+3. Hit **Launch Claude**, or switch to **Codex** and hit **Launch Codex CLI**.
+4. Changed your mind? **Restore previous connection** puts everything back exactly.
+
+> [!TIP]
+> Press <kbd>⌘</kbd> <kbd>K</kbd> or <kbd>/</kbd> to search models. Use <kbd>↑</kbd> <kbd>↓</kbd> to move through the list.
+
+<details>
+<summary><b>Build a standalone .app or .dmg</b></summary>
 
 ```bash
-# Package into standalone arm64 .app bundle:
 npm run package:app
+```
 
-# Generate macOS DMG installer:
+```bash
 npm run package:dmg
 ```
 
-Output artifacts will be generated in the `release/` directory.
+Output goes to `release/`. Builds are unsigned, so right-click → **Open** the first time.
+
+</details>
 
 ---
 
-## ⚡ CLI Quickstart
+## 🤖 Claude Desktop
 
-If you prefer headless operation, SSH sessions, or terminal workflows, OpenCode Bridge includes a full-featured CLI:
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/media/applications-light.png" />
+  <img src="docs/media/applications-dark.png" alt="Applications: each Claude model name mapped to a real model with its own effort level, plus the Codex card" width="100%" />
+</picture>
 
-### 1. Inspect Available Models
-```bash
-npm run build
-node dist/cli.js models
-```
-The model list displays provider, protocol (`anthropic` or `chat`), context limits, and tool-calling support.
+Under **Applications → Claude**, map each Claude model name to any model and pin its effort. **Apply & restart** writes a dedicated Claude Desktop profile (`OpenCode Bridge`), restarts Claude, and keeps a recovery journal of your original settings.
 
-### 2. Initialize a Connection
-```bash
-# Initialize with your preferred provider and model
-node dist/cli.js init --model PROVIDER/MODEL
+| Claude shows | Answered by (example) | Effort |
+| --- | --- | --- |
+| Sonnet 5 | DeepSeek V4.1 Flash Free · *OpenCode agent* | High |
+| Opus 5 | Claude Sonnet 5 · *OpenCode Zen* | Max |
+| Haiku 4.5 | qwen3.6 · *Ollama, on your Mac* | Auto |
+| Fable 5 | Kimi K3 · *NVIDIA* | Auto |
 
-# Example: Configure with the latest Claude 5 generation (Sonnet 5, Opus 5, Haiku 4.5)
-node dist/cli.js init --model anthropic/claude-sonnet-5 \
-  --opus anthropic/claude-opus-5 \
-  --haiku anthropic/claude-haiku-4-5-20251001 \
-  --port 41415
-
-# Example: Route Haiku to a fast local model while using Claude Sonnet 5 for main tasks
-node dist/cli.js init --model anthropic/claude-sonnet-5 \
-  --haiku ollama-local/qwen2.5-coder:7b
-```
-
-> [!TIP]
-> **Anthropic Claude Top-Tier Model Hierarchy:**
->
-> | Model Tier | Identifier | Context | Best For |
-> | :--- | :--- | :--- | :--- |
-> | **Frontier** | `anthropic/claude-fable-5-1` | 1M | Maximum long-horizon reasoning & complex agentic workflows |
-> | **Premium / Opus** | `anthropic/claude-opus-5` | 1M | Enterprise coding, multi-agent systems & deep architecture |
-> | **Flagship / Sonnet** | `anthropic/claude-sonnet-5` *(or `claude-3-7-sonnet`)* | 1M | Recommended daily driver for coding, speed & intelligence |
-> | **Fast / Haiku** | `anthropic/claude-haiku-4-5-20251001` *(or `claude-3-5-haiku`)* | 200K | High-throughput, sub-second latency tasks |
-
-### 3. Verify Profile Preview
-```bash
-node dist/cli.js profile
-```
-*Previews target profile configurations without exposing credentials or modifying files.*
-
-### 4. Start the Gateway & Launch Claude
-```bash
-# Start the background gateway daemon
-node dist/cli.js start
-
-# Check gateway health
-node dist/cli.js status
-
-# Launch Claude Desktop
-node dist/cli.js launch
-```
-> [!TIP]
-> If Claude Desktop is already open, pass `--restart` (`node dist/cli.js launch --restart`) to gracefully restart the app with the new bridge configuration.
-
-### 5. Restore Pristine State
-```bash
-# Revert Claude Desktop to its previous state and stop the gateway
-node dist/cli.js stop --restart
-```
+Direct routes (API-key providers, Ollama, LM Studio, OpenRouter) keep **Claude Code's own tools**: Bash, Edit and so on run client-side, exactly as in normal Claude.
 
 ---
 
-## 🦙 Local Ollama Models
+## 🧩 Codex
 
-Run state-of-the-art open models completely locally inside Claude Desktop:
+<img src="docs/media/codex-cli.gif" alt="A real Codex CLI session through Bridge: Codex runs wc -l and cat on app.py and summarises the Flask app" width="100%" />
 
-### Step 1: Ensure Ollama is Running
-Ensure your local Ollama server is running:
+<sub>A **real recorded session**: Codex CLI 0.153 → Bridge → OpenRouter's free Nemotron 3 Super. Codex executed `wc -l` and `cat` itself via translated tool calls. Long waits are shortened. Recorder: <a href="scripts/media/record-codex.ts">scripts/media/record-codex.ts</a> · <a href="docs/media/codex-cli.mp4">▶︎ MP4</a></sub>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/media/codex-light.png" />
+  <img src="docs/media/codex-dark.png" alt="The launcher switched to Codex with Launch Codex CLI and Use in Codex app buttons" width="100%" />
+</picture>
+
+Bridge serves the **OpenAI Responses API** (`/v1/responses`), which is what Codex speaks, and translates it onto every model route. Like `ollama launch codex`, it offers two modes:
+
+| Mode | What Bridge does | Undo |
+| --- | --- | --- |
+| **Codex CLI** | Writes `~/.codex/opencode-bridge.config.toml` (private, `0600`) plus a model catalog with real effort levels, then opens Terminal with `codex --profile opencode-bridge`. | **Disconnect Codex** deletes both files. |
+| **Codex app** | Moves only the top-level `model`, `model_provider`, `model_catalog_json` and `model_reasoning_effort` lines into a marked block, adds a marked provider table, and restarts the app. | **Disconnect Codex** restores your original lines verbatim. Comments and every other setting are untouched. |
+
+Claude and Codex can be connected **at the same time**. They share one gateway, and disconnecting one keeps the other working.
+
+<details>
+<summary><b>Use it by hand</b></summary>
+
+After launching once from the app:
+
 ```bash
-ollama serve
-# Verify model availability
-ollama list
+codex --profile opencode-bridge
 ```
 
-### Step 2: OpenCode Configuration
-The desktop app discovers installed Ollama models automatically. For CLI use, add a local model definition to your OpenCode configuration (e.g. `~/.config/opencode/opencode.json`):
-
-```json
-{
-  "provider": {
-    "ollama-local": {
-      "npm": "@ai-sdk/anthropic",
-      "name": "Ollama Local",
-      "options": {
-        "baseURL": "http://127.0.0.1:11434/v1"
-      },
-      "models": {
-        "qwen2.5-coder:7b": {
-          "name": "Qwen 2.5 Coder 7B",
-          "tool_call": true,
-          "limit": {
-            "context": 32768,
-            "output": 4096
-          },
-          "cost": {
-            "input": 0,
-            "output": 0
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-### Step 3: Launch with the Local Model
 ```bash
-node dist/cli.js init --model ollama-local/qwen2.5-coder:7b
-node dist/cli.js launch --restart
+codex --profile opencode-bridge exec "explain this repo in 3 bullets"
 ```
 
-Claude Desktop will now communicate with your local Ollama instance with zero internet egress!
+</details>
 
 ---
 
-## 🔒 Security & State Isolation
+## 🆓 Free OpenCode models
 
-Security and failure recovery are core design principles of OpenCode Bridge:
+OpenCode Zen's free models answer every non-OpenCode client with:
 
-```
-+-------------------------------------------------------------------+
-|                        SECURITY BOUNDARY                          |
-+-------------------------------------------------------------------+
-|  [ Claude Desktop ]                                               |
-|        |                                                          |
-|        | (Local Bearer Auth Token)                                |
-|        v                                                          |
-|  [ 127.0.0.1:41415 Gateway ]  <--- Rejects any external Origin    |
-|        |                                                          |
-|        | (Strict In-Memory Key Resolution)                        |
-|        v                                                          |
-|  [ Upstream Provider / Ollama ]                                   |
-+-------------------------------------------------------------------+
+```text
+FreeTierError: OpenCode's free tier can only be used from within OpenCode.
 ```
 
-- **Strict Loopback Binding:** The gateway binds solely to `127.0.0.1`. All incoming browser origin requests are blocked via CORS protection.
-- **Credential Segregation:** Upstream API keys are resolved at runtime from local OpenCode stores and environment variables. Keys **never** enter the renderer process or disk-saved Desktop profiles.
-- **Filesystem Permissions:** Bridge credentials and profile journals are stored in `~/Library/Application Support/OpenCode Claude Bridge` with strict `0600` POSIX file permissions.
-- **Zero Data Retention:** Inference prompt bodies and upstream responses are streamed in-flight and never logged to persistent disks.
-- **Fail-Safe Profile Journaling:** Before modifying any configuration files, the bridge records a journal snapshot. If an external conflict is detected during cleanup, restoration pauses safely rather than overwriting unexpected changes.
+So Bridge **doesn't pretend to be OpenCode. It uses OpenCode.** For these models (and for OAuth logins like GitHub Copilot, or SDKs Bridge can't call directly), the gateway:
+
+1. starts a private `opencode serve` on loopback, protected by a random password,
+2. opens a real OpenCode session in your project folder (Claude Code's or Codex's working directory, or the configured workspace),
+3. streams OpenCode's answer back as Claude or Codex events, with a short `⚙︎ tool` note for each tool OpenCode used,
+4. answers OpenCode's permission prompts from **your policy**:
+
+| Policy | OpenCode may… |
+| --- | --- |
+| **Read only** *(default)* | read, search and browse |
+| **Edit & run** | also edit files and run commands in the working folder |
+| **Full access** | also reach outside the working folder |
+
+> [!NOTE]
+> With these "agent" models, **OpenCode's tools** do the work, not Claude Code's or Codex's. Pick a direct model when you want the app's own tools. Models are badged **Agent** in the library.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/media/settings-light.png" />
+  <img src="docs/media/settings-dark.png" alt="Settings: appearance cards, OpenCode agent workspace and permission policy, gateway port" width="100%" />
+</picture>
 
 ---
 
-## ⌨️ CLI Reference
+## 🧠 Local models: Ollama & LM Studio
 
-| Command | Arguments / Flags | Description |
-| :--- | :--- | :--- |
-| `models` | *none* | Lists all detected models with protocol, context, and capabilities |
-| `init` | `--model <id>`<br>`--opus <id>`<br>`--haiku <id>`<br>`--port <num>` | Configures active routes and tier assignments |
-| `profile` | *none* | Dry-run preview of profile changes to be applied to Claude |
-| `start` | *none* | Spawns the background gateway daemon |
-| `stop` | `[--restart]` | Stops the gateway and optionally restarts Claude |
-| `status` | *none* | Checks whether the gateway is alive and displays active route details |
-| `serve` | *none* | Runs the gateway service directly in the foreground |
-| `launch` | `[--restart]` | Activates profile, ensures gateway is up, and launches Claude Desktop |
-| `connect` | `[--apply]` | Activates configuration into Claude Desktop without launching the app |
-| `restore` | `[--restart]` | Restores original pre-bridge Claude Desktop profiles |
+| | Discovery | Route | Notes |
+| --- | --- | --- | --- |
+| **Ollama** | `/api/tags` + `/api/show` | Native Anthropic Messages (`:11434/v1`) | Tool, vision and thinking capabilities come from Ollama itself |
+| **LM Studio** | REST `/api/v1/models`, or `lms ls` when the server is off | Native Anthropic Messages (`:1234/v1`) | Bridge starts LM Studio's server and loads the model on launch. Models not trained for tool use are shown but disabled. |
+
+Nothing is ever downloaded or loaded just by browsing.
 
 ---
 
-## 🧪 Verification & Testing
+## 🎚️ Effort levels
 
-OpenCode Bridge includes an extensive test suite simulating complex streaming and failover situations:
+Every model lists the effort levels it really supports (from OpenCode's model variants, or Ollama's thinking support). Pin one per Claude model name, or for Codex:
+
+- **Auto** passes through what Claude or Codex asks for.
+- **Pinned** always uses your level.
+- If a request asks for a level the model lacks, Bridge picks the **nearest supported level** (rounding down on ties). It never silently drops the request or escalates it.
+
+---
+
+## 🏗️ How it works
+
+```mermaid
+flowchart LR
+  subgraph Apps
+    C[Claude Desktop]
+    X[Codex CLI / app]
+  end
+  subgraph Bridge["OpenCode Bridge · 127.0.0.1:41415"]
+    M["/v1/messages"]
+    R["/v1/responses → Messages"]
+    E[Effort resolver]
+    A[OpenCode agent engine]
+    D["Direct adapters: Anthropic · Chat Completions"]
+  end
+  subgraph Models
+    O[(Ollama)]
+    L[(LM Studio)]
+    P[("OpenCode providers: NVIDIA · OpenRouter · Zen…")]
+    S[["opencode serve: free tier · OAuth"]]
+  end
+  C --> M --> E
+  X --> R --> E
+  E --> D
+  D --> O
+  D --> L
+  D --> P
+  E --> A --> S
+  W[Model watcher] -. live updates .-> UI[Bridge app]
+  O -. fingerprints .-> W
+  L -. fingerprints .-> W
+  P -. fingerprints .-> W
+```
+
+| Piece | Where |
+| --- | --- |
+| Gateway, routing, effort | [`src/gateway.ts`](src/gateway.ts), [`src/effort.ts`](src/effort.ts) |
+| Responses ⇄ Messages (Codex) | [`src/responses.ts`](src/responses.ts) |
+| OpenCode agent engine | [`src/agent.ts`](src/agent.ts) |
+| Chat Completions translation | [`src/protocol.ts`](src/protocol.ts) |
+| Claude profile and recovery journal | [`src/profile.ts`](src/profile.ts), [`src/clients/claude.ts`](src/clients/claude.ts) |
+| Codex profile and config journal | [`src/clients/codex.ts`](src/clients/codex.ts) |
+| Discovery and live watcher | [`src/desktop/catalog.ts`](src/desktop/catalog.ts), [`src/desktop/watch.ts`](src/desktop/watch.ts) |
+| App UI | [`renderer/src/main.tsx`](renderer/src/main.tsx), [`renderer/src/style.css`](renderer/src/style.css) |
+
+More detail: [INTEGRATIONS.md](INTEGRATIONS.md).
+
+---
+
+## 🧪 Testing
 
 ```bash
-# Type check and syntax check
-npm run check
-npm run check:ui
-
-# Execute unit and protocol test suite
 npm test
-
-# Run launcher background lifecycle smoke test
-npm run smoke:launcher
-
-# Run live zero-cost inference smoke tests (direct client tools; OpenCode agent)
-npm run smoke -- PROVIDER/MODEL
-npm run smoke:agent -- opencode/big-pickle
 ```
 
-### Protocol Tests Validate:
-- Fragmented UTF-8 chunk reassembly
-- Tool call definition and arguments streaming
-- Anthropic Messages to OpenAI Chat Completions translation
-- Prompt cache passthrough and token counting accuracy
-- Atomic profile recovery under abnormal termination
-
----
-
-## ❓ Troubleshooting
-
-<details>
-<summary><strong>1. HTTP 403 FreeTierError on OpenCode Zen Models</strong></summary>
-
-OpenCode allows its free tier only from within OpenCode, so direct calls return `FreeTierError`. Since 0.2.0 the app and `init` route these models through the **OpenCode agent** automatically: they show an "OpenCode agent" badge. If one still fails, check that `opencode run -m opencode/big-pickle "hi"` works in Terminal. The agent uses OpenCode's own tools under the policy in **Settings → OpenCode agent**. Claude Code's or Codex's own tools are not used with these models; pick a direct model (API key, Ollama, OpenRouter) when you need them.
-</details>
-
-<details>
-<summary><strong>2. Claude Desktop fails to connect after gateway restart</strong></summary>
-
-If the background gateway crashed or was killed unexpectedly:
 ```bash
-# Restore previous connection
-node dist/cli.js restore --restart
-# Or restart bridge gateway
-node dist/cli.js start
+npm run check && npm run check:ui
 ```
-</details>
+
+| Suite | What it proves | Result |
+| --- | --- | --- |
+| `npm test` (65 tests) | Anthropic and Chat translation, streaming, parallel tool calls, Responses ⇄ Messages, the agent engine against a fake OpenCode server, effort resolution, Claude and Codex config edits and exact restore, Claude+Codex orchestration, LM Studio discovery, watcher, IPC validation | ✅ 65 / 65 |
+| `npm run smoke:launcher` | Real background gateway: start, reuse, inference, status, stop | ✅ |
+| `npm run smoke -- <free model>` | Live client-tool round trip on a direct route (OpenRouter free) | ✅ |
+| `npm run smoke:agent -- opencode/big-pickle` | Live free Zen model via the OpenCode agent: file read, streaming, follow-up | ✅ DeepSeek Free, Big Pickle |
+| Anthropic SDK × 4 Claude names × 4 free models | Claude Code-shaped requests (tools, adaptive thinking, effort) | ✅ 10 s – 139 s |
+| Real `codex exec` (agent and direct routes) | Codex's own shell tool via Responses | ✅ [recording](#-codex) |
+| Real `ollama pull` / `ollama rm` | Live library updates | ✅ ~4 s / ~2 s |
+
+Full logs, caveats and what was *not* exercised live are in [VERIFICATION.md](VERIFICATION.md) and [BUILD_STATUS.md](BUILD_STATUS.md).
 
 <details>
-<summary><strong>3. Port 41415 is already in use</strong></summary>
+<summary><b>Regenerate the README media</b></summary>
 
-Specify a custom port during initialization:
 ```bash
-node dist/cli.js init --model PROVIDER/MODEL --port 49152
+npm run media:codex
 ```
+
+```bash
+npm run media
+```
+
+`media:codex` records a real Codex session through a disposable gateway. `media` renders the real UI with demo data offscreen and encodes PNG, GIF and MP4 with ffmpeg.
+
 </details>
 
 ---
 
-## 📄 License
+## ⌨️ CLI
 
-Brand marks are from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT) and remain trademarks of their owners.
+The app is the easy path. Everything also works headless:
 
+| Command | What it does |
+| --- | --- |
+| `node dist/cli.js models [--provider ID]` | List models, protocol, agent eligibility, free flag |
+| `node dist/cli.js init --model REF [--opus/--haiku/--fable/--sonnet46 REF] [--auto-mode] [--port N]` | Map Claude's model names. Free and OAuth models automatically use the OpenCode agent. |
+| `node dist/cli.js start` / `stop [--restart]` / `status` | Background gateway |
+| `node dist/cli.js profile` | Preview Claude profile changes (dry run) |
+| `node dist/cli.js launch [--restart]` | Start gateway, apply profile, open Claude |
+| `node dist/cli.js restore [--restart]` | Put Claude back exactly as it was |
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+---
+
+## 🔒 Security
+
+- **Loopback only.** The gateway binds `127.0.0.1`, checks `Host`, rejects browser `Origin`s, and requires a random 256-bit bearer token.
+- **Keys stay in OpenCode.** Provider keys are read at request time and never written to Bridge files, Claude profiles or the UI.
+- **Private agent server.** `opencode serve` runs on loopback with a random password and stops with the gateway.
+- **Reversible edits.** Claude and Codex changes are journaled *before* any write. Restore detects external edits and refuses to overwrite them.
+- **Locked-down UI.** Sandboxed renderer, strict CSP, a single validated IPC channel, and locally bundled fonts and icons.
+- **Logs** hold only metadata: route, status, timing and token estimates. Never prompts, outputs or keys.
+
+---
+
+## ❓ FAQ & troubleshooting
+
+<details>
+<summary><b>A free Zen model fails</b></summary>
+
+Check that OpenCode itself works: `opencode run -m opencode/big-pickle "hi"`. Bridge uses the same OpenCode, so if that fails, sign in or update OpenCode first.
+
+</details>
+
+<details>
+<summary><b>Claude can't use its own tools with my model</b></summary>
+
+That model runs through the OpenCode agent (**Agent** badge), so OpenCode's tools are used instead. Choose a direct model (API key, Ollama, LM Studio or OpenRouter) to keep Claude Code's tools.
+
+</details>
+
+<details>
+<summary><b>An LM Studio model isn't selectable</b></summary>
+
+LM Studio reports it isn't trained for tool use, or it isn't a chat model (embeddings and voice models). Download a tool-capable model and it appears automatically.
+
+</details>
+
+<details>
+<summary><b>How do I undo everything?</b></summary>
+
+Choose **Disconnect & Quit** from the sidebar or the app menu. Claude and Codex return to their exact previous settings and the gateway stops. Headless: `node dist/cli.js restore --restart`.
+
+</details>
+
+<details>
+<summary><b>Port 41415 is busy</b></summary>
+
+Change it under **Settings → Gateway port** (disconnect Claude first), or run `init --port 49152`.
+
+</details>
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Free OpenCode Zen models via the OpenCode agent
+- [x] Codex CLI and app support
+- [x] Per-model effort levels
+- [x] LM Studio, plus live model discovery
+- [x] Light and dark premium UI
+- [ ] Signed and notarized release builds
+- [ ] Launch at login, with gateway auto-restart
+- [ ] More apps as they open up to custom models
+
+---
 
 <div align="center">
-  <sub>Engineered with precision for developers who demand full control over their desktop AI stack.</sub>
+
+**MIT licensed** · Brand marks from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT) remain trademarks of their owners.
+Not affiliated with Anthropic, OpenAI, OpenCode, Ollama or LM Studio.
+
+<sub>Built with Electron, React, TypeScript and a lot of streaming events.</sub>
+
 </div>
