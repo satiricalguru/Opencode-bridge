@@ -1,6 +1,6 @@
 {
   "name": "opencode-claude-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -16,6 +16,7 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test test/*.test.ts",
     "smoke": "tsx scripts/live-smoke.ts",
+    "smoke:agent": "tsx scripts/agent-smoke.ts",
     "smoke:launcher": "npm run build && tsx scripts/launcher-smoke.ts",
     "check:ui": "tsc -p tsconfig.renderer.json",
     "build:app": "npm run build && npm run check:ui && vite build && node scripts/icons.mjs",

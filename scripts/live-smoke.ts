@@ -7,7 +7,9 @@ import { startGateway } from '../src/gateway.js';
 import { type Wire } from '../src/types.js';
 
 const refs = process.argv.slice(2);
-const selected = refs.length ? refs : ['opencode/union-alpha', 'opencode/big-pickle'];
+// Client-tool round trips need a direct route. OpenCode Zen free models run inside
+// the OpenCode agent instead; scripts/agent-smoke.ts covers them.
+const selected = refs.length ? refs : ['openrouter/nvidia/nemotron-3-super-120b-a12b:free'];
 const results: Wire[] = [];
 const models = await inventory();
 for (const ref of selected) {

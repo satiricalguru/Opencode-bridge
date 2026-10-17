@@ -3,9 +3,10 @@ import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { readJSON } from './storage.js';
-import { BridgeError, isObject, type Route, type Slot, type Wire } from './types.js';
+import { BridgeError, isObject, type Effort, type Route, type Slot, type Wire } from './types.js';
 import { effortCapability } from './effort.js';
 import { CLAUDE_SLOTS } from './slots.js';
+import { OPENCODE_AGENT_URL } from './config.js';
 
 const exec = promisify(execFile);
 export const SLOTS = Object.fromEntries(CLAUDE_SLOTS.map(slot => [slot.key, slot.id])) as Record<Slot, string>;
@@ -36,7 +37,7 @@ export async function inventory(): Promise<Map<string, Wire>> {
 export function supportedProtocol(model: Wire): 'anthropic' | 'chat' | undefined {
   const npm = model.api?.npm;
   if (npm === '@ai-sdk/anthropic') return 'anthropic';
-  if (npm === '@ai-sdk/openai-compatible' || npm === '@ai-sdk/openrouter') return 'chat';
+  if (npm === '@ai-sdk/openai-compatible' || npm === '@ai-sdk/openrouter' || npm === '@openrouter/ai-sdk-provider') return 'chat';
   if (npm === '@ai-sdk/openai' && model.api?.endpoint === 'chat') return 'chat';
   return undefined;
 }
@@ -79,12 +80,32 @@ export async function credentials(route: Route): Promise<string | undefined> {
   if (auth?.type === 'oauth') throw new BridgeError(401, 'authentication_error', `${provider}: OAuth runtime reuse is not implemented. Use an API-key connection.`);
   throw new BridgeError(401, 'authentication_error', `No API key available for ${provider}. Connect it in OpenCode first.`);
 }
-export async function makeRoute(ref: string, slot: Slot, models?: Map<string, Wire>): Promise<Route> {
+// OpenCode's own agent can run every model OpenCode can run, including its
+// free tier (restricted to OpenCode itself), OAuth logins, and Responses/Google SDKs.
+export function agentEligible(model: Wire): boolean {
+  return typeof model.providerID === 'string' && model.providerID !== 'ollama-local' && model._bridgeSource !== 'ollama' && model.status !== 'deprecated';
+}
+export interface RouteOptions { via?: 'direct' | 'agent'; effort?: Effort }
+export async function makeRoute(ref: string, slot: Slot | 'codex', models?: Map<string, Wire>, opts: RouteOptions = {}): Promise<Route> {
   const model = (models || await inventory()).get(ref);
   if (!model) throw new Error(`Model not found in OpenCode: ${ref}`);
+  const identity = slot === 'codex' ? { id: ref, tier: 'sonnet' as const } : { id: SLOTS[slot], tier: slot === 'sonnet46' ? 'sonnet' as const : slot, slot };
+  const common = {
+    ...identity, ref,
+    contextTokens: model.limit?.context || 32768, inputTokens: model.limit?.input,
+    maxOutputTokens: model.limit?.output || 4096,
+    vision: model.capabilities?.input?.image === true,
+    ...(opts.effort ? { effortOverride: opts.effort } : {}),
+  };
+  if (opts.via === 'agent') {
+    if (!agentEligible(model)) throw new Error(`${ref} cannot run through the OpenCode agent.`);
+    // OpenCode executes its own tools; Desktop sees a tool-capable assistant.
+    return { ...common, label: `${model.name} · ${model.providerID} · OpenCode agent`, protocol: 'opencode', baseURL: OPENCODE_AGENT_URL, model: ref, auth: { none: true }, tools: true, effort: effortCapability(model, 'opencode') };
+  }
   const protocol = supportedProtocol(model);
-  if (!protocol) throw new Error(`${ref} uses an unsupported provider runtime (Responses, Google, OAuth, or custom SDK).`);
+  if (!protocol) throw new Error(`${ref} uses an unsupported provider runtime (Responses, Google, OAuth, or custom SDK). Run it through the OpenCode agent instead.`);
   if (model.providerID === 'opencode-go') throw new Error('Go routes are deferred until Desktop session/usage compatibility is validated.');
+  if (model.providerID === 'opencode' && model.cost?.input === 0 && model.cost?.output === 0) throw new Error('OpenCode free models only run inside OpenCode. Use the OpenCode agent route.');
   const cfg = await providerConfig(model.providerID);
   if (cfg.blacklist?.includes(model.id) || (cfg.whitelist && !cfg.whitelist.includes(model.id))) throw new Error(`${ref} is filtered by OpenCode configuration.`);
   const options = { ...model.options };
@@ -96,14 +117,12 @@ export async function makeRoute(ref: string, slot: Slot, models?: Map<string, Wi
   if (url.username || url.password || url.search || url.hash) throw new Error('Provider base URL must not contain credentials, query parameters, or fragments.');
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw new Error('Provider endpoints must use HTTPS or local loopback HTTP.');
   return {
-    id: SLOTS[slot], tier: slot === 'sonnet46' ? 'sonnet' : slot, slot, ref, label: `${model.name} · ${model.providerID}`,
+    ...common, label: `${model.name} · ${model.providerID}`,
     protocol, baseURL: baseURL.replace(/\/$/, ''), model: model.api.id,
     auth: { provider: model.providerID, env: ENV[model.providerID],
       ...(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !cfg.options?.apiKey && !process.env[ENV[model.providerID]] ? { none: true } : {}) },
     headers: Object.fromEntries(Object.entries(model.headers || {}).filter(([key]) => !/authorization|api.?key|token|cookie/i.test(key))) as Record<string, string>, options,
-    contextTokens: model.limit?.context || 32768, inputTokens: model.limit?.input,
-    maxOutputTokens: model.limit?.output || 4096,
-    vision: model.capabilities?.input?.image === true, tools: model.capabilities?.toolcall === true,
+    tools: model.capabilities?.toolcall === true,
     reasoningField: model.capabilities?.interleaved?.field,
     effort: effortCapability(model, protocol),
   };

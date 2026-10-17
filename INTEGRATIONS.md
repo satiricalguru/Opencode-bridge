@@ -1,6 +1,6 @@
 # Desktop integration architecture
 
-OpenCode Bridge is now a desktop companion with a reusable model/provider service and a registry of desktop client adapters. Claude is the first implemented client. ChatGPT has a planned descriptor only; there is no claim that its Desktop app accepts this gateway or third-party models.
+OpenCode Bridge is a desktop companion with a reusable model/provider service and a registry of desktop client adapters. Claude (Anthropic Messages) and Codex (OpenAI Responses) are implemented and can be connected at the same time through one gateway.
 
 ```mermaid
 flowchart TB
@@ -10,11 +10,19 @@ flowchart TB
   S --> R[ClientRegistry]
   S --> G[GatewaySupervisor]
   R --> CL[ClaudeClient]
-  R -. supported integration required .-> NEXT[Future desktop client adapters]
+  R --> CX[CodexClient]
   CL --> PM[Claude profile manager and recovery journal]
+  CX --> CP[Codex profile, model catalog, config.toml journal]
   G --> GW[Independent inference gateway process]
-  GW --> A[Native Anthropic / Chat provider adapters]
+  GW --> M[/v1/messages/]
+  GW --> RS[/v1/responses → Messages translator/]
+  M --> A[Native Anthropic / Chat provider adapters]
+  RS --> A
+  M --> AG[OpenCode agent engine]
+  RS --> AG
+  AG --> OS[Bridge-owned opencode serve]
   A --> P[Upstream providers and local servers]
+  OS --> P
 ```
 
 ## Boundaries
@@ -37,12 +45,18 @@ Only enabled implementations may perform native actions. Planned descriptors can
 
 1. Establish the target app's supported external inference contract. Opening an application alone is different from making its conversations use a chosen model. Do not implement model replacement through an unsupported assumption.
 2. Implement `DesktopClient` under `src/clients/`: descriptor, installation/running/connection inspection, preview, recoverable launch, and disconnect. Keep bundle IDs and native commands inside the adapter, never accept shell commands or arbitrary application paths from the renderer.
-3. Give the adapter its own recovery journal and configuration lock if it owns a different client store. Capture prior values before mutation; preserve unrelated edits; detect conflicts before restoring. Extend the orchestrator's active-connection checks if multiple clients may be connected concurrently. The current service deliberately manages one active Claude connection.
+3. Give the adapter its own recovery journal and configuration lock if it owns a different client store. Capture prior values before mutation; preserve unrelated edits; detect conflicts before restoring. The service keeps each client's routes separate (`routes` for Claude, `codexRoutes` for Codex) and only stops the gateway when no other client still uses it.
 4. Declare the required client-facing inference protocol. Anthropic-compatible clients can reuse the existing surface. A client that officially accepts Chat Completions or Responses requires a new gateway surface; existing model discovery and upstream adapters still remain reusable. Disable it until the surface and actual client are tested.
 5. Register the adapter in the main process. Descriptor metadata drives application cards. Persisted selections are already keyed by client ID.
 6. Add orchestration/recovery tests and a real client inference/tool smoke test. Run the IPC tests and packaged-app checks so an unimplemented client cannot accidentally be enabled.
 
-For ChatGPT Desktop, step 1 is a prerequisite still to be researched. Its planned card is disabled, and no auth/profile mutation or model routing is attempted for it.
+### Codex
+
+Codex supports custom providers with `wire_api = "responses"`, as used by `ollama launch codex`. The adapter writes `<CODEX_HOME>/opencode-bridge.config.toml` (mode 0600, loopback bearer token) and `opencode-bridge-models.json`, a catalog with the backend's real effort levels, then opens `codex --profile opencode-bridge` in Terminal. For the Codex app, which reads root `config.toml`, it journals and moves only the top-level `model`, `model_provider`, `model_catalog_json` and `model_reasoning_effort` lines into a marked block. It appends a marked `[model_providers.opencode-bridge]` table and restarts the app. Disconnect removes both blocks and restores the original lines verbatim. Comments, tables and other keys are untouched.
+
+### OpenCode agent routes
+
+Models that cannot be reached directly use `protocol: "opencode"`: OpenCode Zen free models (restricted to OpenCode itself), OAuth logins, and SDKs without a bridge adapter. The gateway starts `opencode serve` lazily on loopback with a random `OPENCODE_SERVER_PASSWORD`, then stops it with the gateway. Sessions are created with an `ask` permission ruleset. The bridge answers each prompt from the configured policy, never interactive questions or doom loops. The app's own tool definitions are not forwarded; OpenCode's tools run instead, and each use is reported as a text note.
 
 ## Native boundary and process lifecycle
 

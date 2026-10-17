@@ -16,7 +16,7 @@ import { discoverLocalModels, type Catalog } from '../src/desktop/catalog.js';
 async function setup(t: test.TestContext) {
   const dir = await mkdtemp(join(tmpdir(), 'bridge-desktop-test-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const refs = ['bridge-test/a', 'bridge-test/b'];
-  const catalog: Catalog = { notices: [], metadata: new Map(refs.map(ref => [ref, { id: ref.split('/')[1], name: ref, providerID: 'bridge-test', api: { id: ref, npm: '@ai-sdk/openai-compatible', url: 'http://127.0.0.1:65500/v1' }, limit: { context: 32768, output: 4096 }, capabilities: { toolcall: true } }])), items: refs.map(ref => ({ ref, name: ref, provider: 'bridge-test', source: 'opencode', protocol: 'chat', tools: true, vision: false, context: 32768, free: true, enabled: true })) };
+  const catalog: Catalog = { notices: [], metadata: new Map(refs.map(ref => [ref, { id: ref.split('/')[1], name: ref, providerID: 'bridge-test', api: { id: ref, npm: '@ai-sdk/openai-compatible', url: 'http://127.0.0.1:65500/v1' }, limit: { context: 32768, output: 4096 }, capabilities: { toolcall: true } }])), items: refs.map(ref => ({ ref, name: ref, provider: 'bridge-test', source: 'opencode', protocol: 'chat', via: 'direct', efforts: [], tools: true, vision: false, context: 32768, free: true, enabled: true })) };
   const calls: Array<{ action: string; config?: BridgeConfig; restart?: boolean }> = [];
   let connected = false;
   let installed = true;
@@ -143,4 +143,52 @@ test('gateway is stopped if client launch throws an error', async t => {
   f.client.launch = async () => { throw new Error('Simulated client launch failure'); };
   await assert.rejects(() => f.service.launch('claude', { model: 'bridge-test/a' }, 65501, false), /Simulated client launch failure/);
   assert.deepEqual(f.calls.map(c => c.action), ['start', 'stop']);
+});
+test('Codex and Claude share one gateway: each keeps its routes and disconnecting one keeps the other served', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'bridge-desktop-codex-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const refs = ['bridge-test/a', 'bridge-test/b'];
+  const catalog: Catalog = { notices: [], metadata: new Map(refs.map(ref => [ref, { id: ref.split('/')[1], name: ref, providerID: 'bridge-test', api: { id: ref, npm: '@ai-sdk/openai-compatible', url: 'http://127.0.0.1:65500/v1' }, limit: { context: 32768, output: 4096 }, capabilities: { toolcall: true }, variants: { low: { reasoningEffort: 'low' }, high: { reasoningEffort: 'high' } } }])), items: refs.map(ref => ({ ref, name: ref, provider: 'bridge-test', source: 'opencode', protocol: 'chat', via: 'direct', efforts: ['low', 'high'], tools: true, vision: false, context: 32768, free: true, enabled: true })) };
+  const calls: string[] = []; const connected: Record<string, boolean> = { claude: false, codex: false };
+  const fake = (id: string): DesktopClient => ({
+    descriptor: { id, name: id, description: 'fixture', availability: 'available', protocol: null },
+    inspect: async () => ({ installed: true, running: false, connected: connected[id], recoveryNeeded: false }), preview: async () => ({}),
+    launch: async (_config, _restart, options) => { calls.push(`${id}:launch:${options?.target || ''}`); connected[id] = true; if (id === 'claude') await atomicJSON(journalPath(dir), { version: 1, state: 'active' }); },
+    disconnect: async () => { calls.push(`${id}:disconnect`); connected[id] = false; if (id === 'claude') await unlink(journalPath(dir)).catch(() => {}); return true; },
+  });
+  const gateway = { start: async () => { calls.push('start'); }, stop: async () => { calls.push('stop'); return true; } };
+  const service = new DesktopService(new ClientRegistry([fake('claude'), fake('codex')]), gateway, dir, async () => catalog, async () => ({ active: 0, routed: 0 }));
+  await service.refresh();
+  await service.launch('claude', { model: 'bridge-test/a', effort: { opus: 'high', haiku: 'max' as any } }, 65501, false);
+  const claudeConfig = await loadConfig(dir);
+  assert.equal(claudeConfig.routes.find(r => r.slot === 'opus')?.effortOverride, 'high');
+  // A level the backend does not advertise is not pinned.
+  assert.equal(claudeConfig.routes.find(r => r.slot === 'haiku')?.effortOverride, undefined);
+  await service.launch('codex', { model: 'bridge-test/b', effort: { sonnet: 'low' } }, 65501, false, { target: 'app' });
+  const both = await loadConfig(dir);
+  assert.deepEqual(both.routes, claudeConfig.routes); assert.equal(both.token, claudeConfig.token);
+  assert.deepEqual(both.codexRoutes?.map(r => [r.id, r.ref, r.effortOverride, r.slot]), [['bridge-test/b', 'bridge-test/b', 'low', undefined]]);
+  await assert.rejects(() => service.launch('codex', { model: 'bridge-test/b' }, 65502, false), /gateway port/);
+  const state = await service.state();
+  assert.equal(state.preferences.selections.codex.model, 'bridge-test/b');
+  assert.equal(state.codexRoutes[0].effort, 'low');
+  calls.length = 0;
+  await service.disconnect('claude', false);
+  assert.deepEqual(calls, ['claude:disconnect']);
+  await assert.rejects(() => service.stop(), /Disconnect Codex/);
+  await service.disconnect('codex', false);
+  assert.deepEqual(calls, ['claude:disconnect', 'codex:disconnect', 'stop']);
+  await service.settings({ workspace: '/tmp/bridge-workspace', permission: 'workspace-write' });
+  assert.deepEqual((await loadConfig(dir)).opencode, { workspace: '/tmp/bridge-workspace', permission: 'workspace-write' });
+});
+test('IPC accepts per-slot effort, Codex launch targets, and agent settings, and rejects malformed values', () => {
+  assert.deepEqual(parseDesktopRequest({ action: 'launch', client: 'codex', selection: { model: 'a/b', effort: { sonnet: 'high' } }, port: 41415, restart: false, target: 'app' }), { action: 'launch', client: 'codex', selection: { model: 'a/b', effort: { sonnet: 'high' } }, port: 41415, restart: false, target: 'app' });
+  assert.deepEqual(parseDesktopRequest({ action: 'settings', agent: { workspace: '/Users/me/ws', permission: 'read-only' } }), { action: 'settings', agent: { workspace: '/Users/me/ws', permission: 'read-only' } });
+  for (const input of [
+    { action: 'launch', client: 'codex', selection: { model: 'a/b' }, port: 41415, restart: false, target: 'shell' },
+    { action: 'save', client: 'claude', selection: { model: 'a/b', effort: { sonnet: 'turbo' } }, port: 41415 },
+    { action: 'save', client: 'claude', selection: { model: 'a/b', effort: { codex: 'high' } }, port: 41415 },
+    { action: 'settings', agent: { workspace: 'relative', permission: 'read-only' } },
+    { action: 'settings', agent: { workspace: '/ok', permission: 'root' } },
+    { action: 'save', client: 'claude', selection: { model: 'a/b' }, port: 41415, target: 'app' },
+  ]) assert.throws(() => parseDesktopRequest(input), JSON.stringify(input));
 });

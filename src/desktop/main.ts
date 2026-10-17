@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stateDir } from '../storage.js';
 import { GatewaySupervisor } from '../runtime.js';
 import { ClaudeClient } from '../clients/claude.js';
+import { CodexClient } from '../clients/codex.js';
 import { ClientRegistry } from '../clients/registry.js';
 import { DesktopService } from './service.js';
 import { parseDesktopRequest } from './requests.js';
@@ -16,24 +17,24 @@ app.setName('OpenCode Bridge');
 mkdirSync(join(stateDir(), 'desktop'), { recursive: true, mode: 0o700 });
 app.setPath('userData', join(stateDir(), 'desktop'));
 // Finder launches do not inherit an interactive shell's PATH.
-process.env.PATH = [...new Set([join(homedir(), '.opencode/bin'), join(homedir(), '.bun/bin'), '/opt/homebrew/bin', '/usr/local/bin', ...(process.env.PATH || '').split(':')])].join(':');
+process.env.PATH = [...new Set([join(homedir(), '.opencode/bin'), join(homedir(), '.bun/bin'), join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', ...(process.env.PATH || '').split(':')])].join(':');
 protocol.registerSchemesAsPrivileged([{ scheme: 'bridge', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const rendererRoot = join(root, 'renderer-dist');
-const service = new DesktopService(new ClientRegistry([new ClaudeClient()]), new GatewaySupervisor(stateDir(), process.execPath, { ...process.env, ELECTRON_RUN_AS_NODE: '1' }));
+const service = new DesktopService(new ClientRegistry([new ClaudeClient(), new CodexClient()]), new GatewaySupervisor(stateDir(), process.execPath, { ...process.env, ELECTRON_RUN_AS_NODE: '1' }));
 let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
 let requestingQuit = false;
 const show = () => { if (window) { window.show(); window.focus(); } };
 const finishQuit = () => { quitting = true; app.quit(); };
-async function disconnectAndQuit(): Promise<void> {
+async function disconnectAll(): Promise<void> {
   const state = await service.state();
   const connected = state.clients.filter(client => client.status?.connected || client.status?.recoveryNeeded);
   for (const client of connected) await service.disconnect(client.id, true);
   if (!connected.length) await service.stop();
-  finishQuit();
 }
+async function disconnectAndQuit(): Promise<void> { await disconnectAll(); finishQuit(); }
 async function requestQuit(disconnect = false): Promise<void> {
   if (requestingQuit) return;
   requestingQuit = true;
@@ -41,8 +42,8 @@ async function requestQuit(disconnect = false): Promise<void> {
     if (service.actionInProgress) throw new Error('Wait for the connection action to finish before quitting Bridge.');
     const state = await service.state();
     if (!state.gateway.ready && !state.clients.some(client => client.status?.connected || client.status?.recoveryNeeded)) { finishQuit(); return; }
-    const choice = disconnect ? { response: 0 } : await dialog.showMessageBox({ type: 'question', title: 'Quit OpenCode Bridge', message: 'Disconnect Claude before quitting?',
-      detail: 'Disconnect restores your previous Claude connection, restarts Claude, and stops the gateway. Keep Connected leaves Claude using Bridge after this app quits.',
+    const choice = disconnect ? { response: 0 } : await dialog.showMessageBox({ type: 'question', title: 'Quit OpenCode Bridge', message: 'Disconnect your apps before quitting?',
+      detail: 'Disconnect restores your previous Claude and Codex settings, restarts connected apps, and stops the gateway. Keep Connected leaves them using Bridge after this app quits.',
       buttons: ['Disconnect & Quit', 'Keep Connected & Quit', 'Cancel'], defaultId: 0, cancelId: 2, noLink: true });
     if (choice.response === 0) await disconnectAndQuit();
     else if (choice.response === 1) finishQuit();
@@ -86,10 +87,11 @@ else {
         case 'state': state = await service.state(); break;
         case 'refresh': state = await service.refresh(); break;
         case 'save': state = await service.save(request.client, request.selection, request.port); break;
-        case 'launch': state = await service.launch(request.client, request.selection, request.port, request.restart); break;
+        case 'launch': state = await service.launch(request.client, request.selection, request.port, request.restart, { target: request.target }); break;
+        case 'settings': state = await service.settings(request.agent); break;
         case 'apply': state = await service.apply(request.client, request.selection, request.port, request.restart); break;
         case 'disconnect': state = await service.disconnect(request.client, request.restart); break;
-        case 'disconnect-quit': state = await service.disconnect(request.client, request.restart); setImmediate(finishQuit); break;
+        case 'disconnect-quit': await disconnectAll(); state = await service.state(); setImmediate(finishQuit); break;
         case 'stop': state = await service.stop(); break;
         case 'open-state': await shell.openPath(stateDir()); state = await service.state(); break;
       }

@@ -1,4 +1,5 @@
-import { inventory, makeRoute, credentials, supportedProtocol } from '../opencode.js';
+import { inventory, makeRoute, credentials, supportedProtocol, agentEligible } from '../opencode.js';
+import { effortCapability } from '../effort.js';
 import type { Wire } from '../types.js';
 import type { ModelItem } from './contracts.js';
 
@@ -41,17 +42,24 @@ export async function discoverCatalog(): Promise<Catalog> {
   for (const [ref, meta] of metadata) {
     const protocol = supportedProtocol(meta) || 'unsupported';
     const free = meta.cost?.input === 0 && meta.cost?.output === 0;
-    let reason: string | undefined;
-    if (protocol === 'unsupported') reason = 'This provider protocol needs an adapter.';
-    else if (meta.providerID === 'opencode-go') reason = 'OpenCode Go integration is not enabled.';
-    else if (meta.providerID === 'opencode' && free) reason = 'OpenCode restricts its free-tier routes to OpenCode itself.';
-    else if (!meta.capabilities?.toolcall) reason = 'Desktop integration requires tool-call support.';
+    const agent = openCode.status === 'fulfilled' && agentEligible(meta);
+    let reason: string | undefined; let via: 'direct' | 'agent' = 'direct';
+    // Prefer a direct route: Desktop's own tools (Code, Cowork) then run client-side.
+    // Otherwise run the model inside OpenCode's agent, which OpenCode supports for
+    // its free tier, OAuth logins and every SDK it ships.
+    let direct: string | undefined;
+    if (!meta.capabilities?.toolcall) reason = 'Desktop integration requires tool-call support.';
+    else if (protocol === 'unsupported') direct = 'This provider protocol needs an adapter.';
+    else if (meta.providerID === 'opencode-go') direct = 'OpenCode Go integration is not enabled.';
+    else if (meta.providerID === 'opencode' && free) direct = 'OpenCode free models only run inside OpenCode.';
     else {
       if (!auth.has(meta.providerID)) auth.set(meta.providerID, makeRoute(ref, 'sonnet', metadata).then(credentials).then(() => true, () => false));
-      if (!await auth.get(meta.providerID)) reason = 'Connect this provider with an API key in OpenCode. OAuth reuse is not supported yet.';
+      if (!await auth.get(meta.providerID)) direct = 'Connect this provider with an API key in OpenCode.';
     }
-    items.push({ ref, name: meta.name || meta.id, provider: meta.providerID, source: meta._bridgeSource === 'ollama' ? 'ollama' : 'opencode', protocol, tools: !!meta.capabilities?.toolcall, vision: !!meta.capabilities?.input?.image, context: meta.limit?.context || 32768, free, enabled: !reason, ...(reason ? { reason } : {}) });
+    if (!reason && direct) { if (agent) via = 'agent'; else reason = direct; }
+    const efforts = reason ? [] : effortCapability(meta, via === 'agent' ? 'opencode' : protocol as 'anthropic' | 'chat')?.levels || [];
+    items.push({ ref, name: meta.name || meta.id, provider: meta.providerID, source: meta._bridgeSource === 'ollama' ? 'ollama' : 'opencode', protocol: via === 'agent' ? 'opencode' : protocol, via, efforts, tools: !!meta.capabilities?.toolcall, vision: !!meta.capabilities?.input?.image, context: meta.limit?.context || 32768, free, enabled: !reason, ...(reason ? { reason } : {}) });
   }
-  items.sort((a, b) => Number(b.source === 'ollama') - Number(a.source === 'ollama') || Number(b.enabled) - Number(a.enabled) || a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+  items.sort((a, b) => Number(b.enabled) - Number(a.enabled) || Number(b.source === 'ollama') - Number(a.source === 'ollama') || Number(b.free) - Number(a.free) || a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
   return { metadata, items, notices };
 }
